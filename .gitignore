@@ -1,0 +1,16 @@
+# Local evidence and debugger output
+artifacts/
+evidence/
+docs/runtime-evidence/
+*.log
+*.status
+
+# Ghidra project and analysis output
+*.gpr
+*.rep
+*.lock
+ghidra-projects/
+
+# Editor and PowerShell state
+.vscode/
+*.tmp

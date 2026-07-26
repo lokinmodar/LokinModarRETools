@@ -1,0 +1,4 @@
+interface:
+  display_name: "Investigating Game Signatures"
+  short_description: "Analyze x64 game byte signatures"
+  default_prompt: "Use $investigating-game-signatures to validate these patterns against my PE executable."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "FFXIV Guided Runtime RE"
+  short_description: "Safely confirm runtime RE hypotheses."
+  default_prompt: "Help confirm this specific FFXIV runtime RE hypothesis with a read-only observation."

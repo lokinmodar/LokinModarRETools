@@ -1,0 +1,4 @@
+interface:
+  display_name: "FFXIVClientStructs PRs"
+  short_description: "Prepare ABI-safe upstream contribution PRs"
+  default_prompt: "Use $contributing-ffxiv-client-structs to prepare a focused upstream PR."
