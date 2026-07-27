@@ -7,6 +7,9 @@ public static class JournalCompletedEntriesComparer
     public static ScenarioCompareResult Compare(JournalCompletedEntriesSnapshot local, JournalCompletedEntriesSnapshot owner)
     {
         var differences = new List<string>();
+        if (local.Entries.Count != owner.Entries.Count)
+            differences.Add($"Entry count mismatch: {local.Entries.Count} vs {owner.Entries.Count}.");
+
         var pairs = local.Entries.Zip(owner.Entries, (left, right) => (left, right)).ToArray();
 
         foreach (var (left, right) in pairs)

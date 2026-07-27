@@ -25,6 +25,12 @@ public sealed class JournalCompletedEntriesOwnerScenario(
 
     public ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken)
     {
+        if (requirements.Count == 0)
+            return ValueTask.FromResult(new ScenarioPreconditionResult(false, "Journal signature requirements are required."));
+
+        if (resolutions.Count == 0)
+            return ValueTask.FromResult(new ScenarioPreconditionResult(false, "Journal signature resolutions are required."));
+
         var result = signatureGate.Evaluate(requirements, resolutions);
         var reason = result.CanRun
             ? null

@@ -20,10 +20,13 @@ public sealed class JournalCompletedEntriesLocalScenario(
 
     public ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken)
     {
-        var availability = availabilityDetector?.Evaluate(context.Mode);
+        if (availabilityDetector is null)
+            return ValueTask.FromResult(new ScenarioPreconditionResult(false, "Local ClientStructs availability detector is required."));
+
+        var availability = availabilityDetector.Evaluate(context.Mode);
         return ValueTask.FromResult(new ScenarioPreconditionResult(
-            availability?.IsAvailable ?? true,
-            availability?.BlockingReason));
+            availability.IsAvailable,
+            availability.BlockingReason));
     }
 
     public async ValueTask<ScenarioCapture> CaptureAsync(ScenarioExecutionContext context, CancellationToken cancellationToken)

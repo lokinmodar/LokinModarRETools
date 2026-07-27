@@ -31,18 +31,63 @@ public sealed class JournalCompletedEntriesScenarioTests
     }
 
     [Fact]
+    public void Compare_Fails_WhenEntryCountDiffers()
+    {
+        var local = new JournalCompletedEntriesSnapshot(
+            [new JournalEntryRecord(1, 0, "The Company You Keep", "65632", "local")],
+            "1 entry");
+        var owner = new JournalCompletedEntriesSnapshot(
+            [
+                new JournalEntryRecord(1, 0, "The Company You Keep", "65632", "owner"),
+                new JournalEntryRecord(1, 1, "A Relic Reborn", "65633", "owner"),
+            ],
+            "2 entries");
+
+        var compare = JournalCompletedEntriesComparer.Compare(local, owner);
+
+        Assert.False(compare.IsMatch);
+        Assert.Contains(compare.Differences, diff => diff.Contains("Entry count mismatch", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task FullProof_AppliesSentinelAndRestoresOriginalText()
     {
+        var propsPath = Path.GetTempFileName();
+        var projectPath = Path.GetTempFileName();
         var probe = new FakeJournalProbe(originalText: "The Company You Keep");
-        var scenario = new JournalCompletedEntriesLocalScenario(probe);
+
+        try
+        {
+            var scenario = new JournalCompletedEntriesLocalScenario(
+                probe,
+                new LocalClientStructsAvailabilityDetector(propsPath, projectPath));
+            var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.LocalClientStructs, ValidationMode.FullProof);
+
+            var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(), new NullEvidenceWriter())
+                .RunAsync(scenario, context, CancellationToken.None);
+
+            Assert.True(report.IsSuccess);
+            Assert.Equal("The Company You Keep", probe.CurrentText);
+            Assert.Contains("[REVALIDATION] Journal Sentinel", report.OverrideResult!.Summary, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(propsPath);
+            File.Delete(projectPath);
+        }
+    }
+
+    [Fact]
+    public async Task LocalFullProof_Blocks_WhenAvailabilityDetectorIsMissing()
+    {
+        var scenario = new JournalCompletedEntriesLocalScenario(new FakeJournalProbe("The Company You Keep"));
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.LocalClientStructs, ValidationMode.FullProof);
 
         var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(), new NullEvidenceWriter())
             .RunAsync(scenario, context, CancellationToken.None);
 
-        Assert.True(report.IsSuccess);
-        Assert.Equal("The Company You Keep", probe.CurrentText);
-        Assert.Contains("[REVALIDATION] Journal Sentinel", report.OverrideResult!.Summary, StringComparison.Ordinal);
+        Assert.False(report.IsSuccess);
+        Assert.Equal("Local ClientStructs availability detector is required.", report.Precondition!.BlockingReason);
     }
 
     [Fact]
@@ -75,6 +120,19 @@ public sealed class JournalCompletedEntriesScenarioTests
 
         Assert.False(report.IsSuccess);
         Assert.Contains("journalProvider", report.Precondition!.BlockingReason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OwnerFullProof_Blocks_WhenSignatureRequirementsAreMissing()
+    {
+        var scenario = new JournalCompletedEntriesOwnerScenario(new FakeJournalProbe("The Company You Keep"));
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.FullProof);
+
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(), new NullEvidenceWriter())
+            .RunAsync(scenario, context, CancellationToken.None);
+
+        Assert.False(report.IsSuccess);
+        Assert.Equal("Journal signature requirements are required.", report.Precondition!.BlockingReason);
     }
 
     private sealed class FakeJournalProbe(string originalText) : IJournalCompletedEntriesProbe
