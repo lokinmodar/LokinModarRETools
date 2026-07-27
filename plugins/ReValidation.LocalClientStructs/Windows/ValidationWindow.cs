@@ -28,6 +28,8 @@ public sealed class ValidationWindow : Window
 
         ImGui.TextUnformatted("Local ClientStructs route");
         ImGui.TextUnformatted($"Status: {controller.State.StatusText}");
+        if (!string.IsNullOrWhiteSpace(controller.State.StatusDetailText))
+            ImGui.TextWrapped(controller.State.StatusDetailText);
 
         var scenarios = controller.Scenarios.Where(scenario => scenario.Definition.SupportedRoutes.Contains(ValidationRoute.LocalClientStructs)).ToArray();
         var selectedScenario = scenarios.FirstOrDefault(scenario => scenario.Definition.Id == controller.State.SelectedScenarioId);
@@ -64,7 +66,7 @@ public sealed class ValidationWindow : Window
 
             ImGui.SameLine();
             if (ImGui.Button("Arm selected scenario"))
-                controller.ArmSelectedScenario(TimeSpan.FromSeconds(armDurationSeconds));
+                _ = ObserveArmAsync();
             ImGui.EndDisabled();
 
             ImGui.BeginDisabled(!controller.State.IsArmed);
@@ -92,11 +94,11 @@ public sealed class ValidationWindow : Window
         }
         catch (OperationCanceledException)
         {
-            controller.State.SetCompleted("Cancelled", Array.Empty<string>());
+            controller.State.SetCompleted("Cancelled", string.Empty, Array.Empty<string>());
         }
         catch (Exception)
         {
-            controller.State.SetCompleted("Failed", Array.Empty<string>());
+            controller.State.SetCompleted("Failed", string.Empty, Array.Empty<string>());
         }
     }
 
@@ -108,11 +110,27 @@ public sealed class ValidationWindow : Window
         }
         catch (OperationCanceledException)
         {
-            controller.State.SetCompleted("Cancelled", Array.Empty<string>());
+            controller.State.SetCompleted("Cancelled", string.Empty, Array.Empty<string>());
         }
         catch (Exception)
         {
-            controller.State.SetCompleted("Failed", Array.Empty<string>());
+            controller.State.SetCompleted("Failed", string.Empty, Array.Empty<string>());
+        }
+    }
+
+    private async Task ObserveArmAsync()
+    {
+        try
+        {
+            await controller.ArmSelectedScenarioAsync(TimeSpan.FromSeconds(armDurationSeconds), CancellationToken.None);
+        }
+        catch (OperationCanceledException)
+        {
+            controller.State.SetCompleted("Cancelled", string.Empty, Array.Empty<string>());
+        }
+        catch (Exception)
+        {
+            controller.State.SetCompleted("Failed", string.Empty, Array.Empty<string>());
         }
     }
 }

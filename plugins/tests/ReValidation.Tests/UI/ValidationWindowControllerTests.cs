@@ -23,6 +23,7 @@ public sealed class ValidationWindowControllerTests
         await controller.RunSelectedScenarioAsync(CancellationToken.None);
 
         Assert.Equal("Passed", controller.State.StatusText);
+        Assert.Equal("item tooltip captured", controller.State.StatusDetailText);
         Assert.Equal(2, controller.State.ArtifactPaths.Count);
         Assert.Contains(controller.State.ArtifactPaths, path => path.EndsWith(".md", StringComparison.OrdinalIgnoreCase));
     }
@@ -35,6 +36,7 @@ public sealed class ValidationWindowControllerTests
         await controller.RunSelectedScenarioAsync(CancellationToken.None);
 
         Assert.Equal("Failed", controller.State.StatusText);
+        Assert.Empty(controller.State.StatusDetailText);
         Assert.Empty(controller.State.ArtifactPaths);
     }
 
@@ -46,6 +48,19 @@ public sealed class ValidationWindowControllerTests
         await controller.RunSelectedScenarioAsync(CancellationToken.None);
 
         Assert.Equal("Cancelled", controller.State.StatusText);
+        Assert.Empty(controller.State.StatusDetailText);
+        Assert.Empty(controller.State.ArtifactPaths);
+    }
+
+    [Fact]
+    public async Task RunSelectedScenario_BlockedPrecondition_PublishesBlockedStatusAndReason()
+    {
+        var controller = CreateController(new BlockingReportRunner("Tooltip comparison reference source is required."));
+
+        await controller.RunSelectedScenarioAsync(CancellationToken.None);
+
+        Assert.Equal("Blocked", controller.State.StatusText);
+        Assert.Equal("Tooltip comparison reference source is required.", controller.State.StatusDetailText);
         Assert.Empty(controller.State.ArtifactPaths);
     }
 
@@ -78,6 +93,7 @@ public sealed class ValidationWindowControllerTests
 
         Assert.True(runner.ObservedCancellation);
         Assert.Equal("Cancelled", controller.State.StatusText);
+        Assert.Empty(controller.State.StatusDetailText);
     }
 
     [Fact]
@@ -98,20 +114,23 @@ public sealed class ValidationWindowControllerTests
 
         Assert.True(controller.CanArmSelectedScenario());
 
-        controller.ArmSelectedScenario(TimeSpan.FromSeconds(10));
+        await controller.ArmSelectedScenarioAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
         Assert.True(controller.State.IsArmed);
         Assert.Equal("Armed", controller.State.StatusText);
+        Assert.Equal("Hover the tooltip in game.", controller.State.StatusDetailText);
 
         await controller.PulseArmedScenarioAsync(CancellationToken.None);
 
         Assert.True(controller.State.IsArmed);
         Assert.Equal("Waiting for tooltip cue.", controller.State.StatusText);
+        Assert.Equal("Hover the tooltip in game.", controller.State.StatusDetailText);
         Assert.Equal(0, runner.RunCount);
 
         await controller.PulseArmedScenarioAsync(CancellationToken.None);
 
         Assert.False(controller.State.IsArmed);
         Assert.Equal("Passed", controller.State.StatusText);
+        Assert.Equal("item tooltip captured", controller.State.StatusDetailText);
         Assert.Equal(2, controller.State.ArtifactPaths.Count);
         Assert.Equal(2, scenario.PollCount);
         Assert.Equal(1, runner.RunCount);
@@ -132,7 +151,7 @@ public sealed class ValidationWindowControllerTests
             timeProvider: timeProvider);
 
         controller.State.SelectScenario("tooltip.item-detail");
-        controller.ArmSelectedScenario(TimeSpan.FromSeconds(5));
+        await controller.ArmSelectedScenarioAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
 
         await controller.PulseArmedScenarioAsync(CancellationToken.None);
         Assert.True(controller.State.IsArmed);
@@ -142,6 +161,7 @@ public sealed class ValidationWindowControllerTests
 
         Assert.False(controller.State.IsArmed);
         Assert.Equal("Timed out", controller.State.StatusText);
+        Assert.Equal("Tooltip cue did not become ready within the arm window.", controller.State.StatusDetailText);
         Assert.Empty(controller.State.ArtifactPaths);
         Assert.Equal(0, runner.RunCount);
     }
@@ -160,7 +180,7 @@ public sealed class ValidationWindowControllerTests
             timeProvider: new FakeTimeProvider());
 
         controller.State.SelectScenario("tooltip.item-detail");
-        controller.ArmSelectedScenario(TimeSpan.FromSeconds(10));
+        await controller.ArmSelectedScenarioAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
 
         controller.DisarmSelectedScenario();
         await controller.PulseArmedScenarioAsync(CancellationToken.None);
@@ -168,6 +188,29 @@ public sealed class ValidationWindowControllerTests
         Assert.False(controller.State.IsArmed);
         Assert.False(controller.State.IsRunning);
         Assert.Equal("Idle", controller.State.StatusText);
+        Assert.Empty(controller.State.StatusDetailText);
+        Assert.Equal(0, runner.RunCount);
+        Assert.Equal(0, scenario.PollCount);
+    }
+
+    [Fact]
+    public async Task ArmSelectedScenario_BlockedPrecondition_PublishesBlockedStatusBeforePolling()
+    {
+        var scenario = new BlockingArmableScenario("tooltip.item-detail", "Tooltip comparison reference source is required.");
+        var runner = new StubRunner();
+        var controller = new ValidationWindowController(
+            state: new ValidationWindowState(),
+            registry: ValidationScenarioRegistry.ForTests(scenario),
+            runner: runner,
+            timeProvider: new FakeTimeProvider());
+
+        controller.State.SelectScenario("tooltip.item-detail");
+
+        await controller.ArmSelectedScenarioAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+
+        Assert.False(controller.State.IsArmed);
+        Assert.Equal("Blocked", controller.State.StatusText);
+        Assert.Equal("Tooltip comparison reference source is required.", controller.State.StatusDetailText);
         Assert.Equal(0, runner.RunCount);
         Assert.Equal(0, scenario.PollCount);
     }
@@ -200,7 +243,13 @@ public sealed class ValidationWindowControllerTests
         private ScenarioRunReport CreateReport(IValidationScenario scenario, ScenarioExecutionContext context)
         {
             RunCount++;
-            return ScenarioRunReport.CreateForTests(scenario.Definition.Id, context.Route, context.Mode)
+            var report = ScenarioRunReport.CreateForTests(scenario.Definition.Id, context.Route, context.Mode) with
+            {
+                Capture = new ScenarioCapture("item tooltip captured", new JsonObject()),
+                IsSuccess = true,
+            };
+
+            return report
                 .WithEvidence(new EvidenceWriteResult("json", "evidence.json"))
                 .WithEvidence(new EvidenceWriteResult("markdown", "evidence.md"));
         }
@@ -245,11 +294,21 @@ public sealed class ValidationWindowControllerTests
             Task.FromCanceled<ScenarioRunReport>(new CancellationToken(canceled: true));
     }
 
+    private sealed class BlockingReportRunner(string reason) : IValidationScenarioRunner
+    {
+        public Task<ScenarioRunReport> RunAsync(IValidationScenario scenario, ScenarioExecutionContext context, CancellationToken cancellationToken) =>
+            Task.FromResult(
+                ScenarioRunReport.Started(scenario.Definition, context.Route, context.Mode)
+                    .WithPrecondition(new ScenarioPreconditionResult(false, reason))
+                    .MarkBlocked());
+    }
+
     private sealed class StubScenario(string id) : IValidationScenario
     {
         public ValidationScenarioDefinition Definition { get; } = new(id, id);
 
-        public ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new ScenarioPreconditionResult(true, null));
         public ValueTask<ScenarioCapture> CaptureAsync(ScenarioExecutionContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
         public ValueTask<ScenarioCompareResult?> CompareAsync(ScenarioExecutionContext context, ScenarioCapture capture, CancellationToken cancellationToken) => throw new NotSupportedException();
         public ValueTask<ScenarioOverrideTicket?> OverrideAsync(ScenarioExecutionContext context, ScenarioCapture capture, CancellationToken cancellationToken) => throw new NotSupportedException();
@@ -274,7 +333,30 @@ public sealed class ValidationWindowControllerTests
             return ValueTask.FromResult(cueStates.Dequeue());
         }
 
-        public ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new ScenarioPreconditionResult(true, null));
+        public ValueTask<ScenarioCapture> CaptureAsync(ScenarioExecutionContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ValueTask<ScenarioCompareResult?> CompareAsync(ScenarioExecutionContext context, ScenarioCapture capture, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ValueTask<ScenarioOverrideTicket?> OverrideAsync(ScenarioExecutionContext context, ScenarioCapture capture, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ValueTask<ScenarioAssertResult?> AssertAsync(ScenarioExecutionContext context, ScenarioCapture capture, ScenarioOverrideTicket? ticket, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ValueTask<ScenarioRestoreResult> RestoreAsync(ScenarioExecutionContext context, ScenarioCapture capture, ScenarioOverrideTicket? ticket, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class BlockingArmableScenario(string id, string reason) : IValidationScenario, IArmableValidationScenario
+    {
+        public ValidationScenarioDefinition Definition { get; } = new(id, id);
+        public string ArmPrompt => "Hover the tooltip in game.";
+        public int PollCount { get; private set; }
+
+        public ValueTask<ScenarioArmState> PollArmCueAsync(CancellationToken cancellationToken)
+        {
+            PollCount++;
+            return ValueTask.FromResult(new ScenarioArmState(true, "Tooltip cue ready."));
+        }
+
+        public ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new ScenarioPreconditionResult(false, reason));
+
         public ValueTask<ScenarioCapture> CaptureAsync(ScenarioExecutionContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
         public ValueTask<ScenarioCompareResult?> CompareAsync(ScenarioExecutionContext context, ScenarioCapture capture, CancellationToken cancellationToken) => throw new NotSupportedException();
         public ValueTask<ScenarioOverrideTicket?> OverrideAsync(ScenarioExecutionContext context, ScenarioCapture capture, CancellationToken cancellationToken) => throw new NotSupportedException();

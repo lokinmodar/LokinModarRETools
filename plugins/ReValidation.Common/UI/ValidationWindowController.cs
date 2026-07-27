@@ -45,20 +45,30 @@ public sealed class ValidationWindowController : IDisposable
         await RunScenarioAsync(CreateSelectionSnapshot(), cancellationToken);
     }
 
-    public void ArmSelectedScenario(TimeSpan timeout)
+    public async Task ArmSelectedScenarioAsync(TimeSpan timeout, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         if (timeout <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(timeout));
         if (State.IsBusy)
             return;
-        if (!TryGetSelectedArmableScenario(out _))
+        if (!TryGetSelectedArmableScenario(out var armableScenario))
             throw new InvalidOperationException("The selected scenario does not support arming.");
 
+        var selection = CreateSelectionSnapshot();
+        var scenario = registry.GetRequired(selection.ScenarioId);
+        var context = contextFactory.Create(selection.Route, selection.Mode);
+        var precondition = await scenario.ValidateAsync(context, cancellationToken);
+        if (!precondition.CanRun)
+        {
+            State.SetCompleted("Blocked", precondition.BlockingReason, Array.Empty<string>());
+            return;
+        }
+
         armedScenarioRequest = new ArmedScenarioRequest(
-            CreateSelectionSnapshot(),
+            selection,
             timeProvider.GetUtcNow().Add(timeout));
-        State.SetArmed("Armed");
+        State.SetArmed("Armed", armableScenario!.ArmPrompt);
     }
 
     public void DisarmSelectedScenario()
@@ -87,7 +97,7 @@ public sealed class ValidationWindowController : IDisposable
             if (timeProvider.GetUtcNow() >= request.DeadlineUtc)
             {
                 armedScenarioRequest = null;
-                State.SetCompleted("Timed out", Array.Empty<string>());
+                State.SetCompleted("Timed out", "Tooltip cue did not become ready within the arm window.", Array.Empty<string>());
                 return;
             }
 
@@ -95,7 +105,7 @@ public sealed class ValidationWindowController : IDisposable
             if (scenario is not IArmableValidationScenario armableScenario)
             {
                 armedScenarioRequest = null;
-                State.SetCompleted("Failed", Array.Empty<string>());
+                State.SetCompleted("Failed", string.Empty, Array.Empty<string>());
                 return;
             }
 
@@ -112,12 +122,12 @@ public sealed class ValidationWindowController : IDisposable
         catch (OperationCanceledException)
         {
             armedScenarioRequest = null;
-            State.SetCompleted("Cancelled", Array.Empty<string>());
+            State.SetCompleted("Cancelled", string.Empty, Array.Empty<string>());
         }
         catch (Exception)
         {
             armedScenarioRequest = null;
-            State.SetCompleted("Failed", Array.Empty<string>());
+            State.SetCompleted("Failed", string.Empty, Array.Empty<string>());
         }
         finally
         {
@@ -148,15 +158,15 @@ public sealed class ValidationWindowController : IDisposable
             var scenario = registry.GetRequired(selection.ScenarioId);
             var context = contextFactory.Create(selection.Route, selection.Mode);
             var report = await runner.RunAsync(scenario, context, runCancellationSource.Token);
-            State.SetCompleted(report.IsSuccess ? "Passed" : "Failed", report.ArtifactPaths);
+            State.SetCompleted(GetStatusText(report), report.Summary, report.ArtifactPaths);
         }
         catch (OperationCanceledException)
         {
-            State.SetCompleted("Cancelled", Array.Empty<string>());
+            State.SetCompleted("Cancelled", string.Empty, Array.Empty<string>());
         }
         catch (Exception)
         {
-            State.SetCompleted("Failed", Array.Empty<string>());
+            State.SetCompleted("Failed", string.Empty, Array.Empty<string>());
         }
         finally
         {
@@ -181,6 +191,16 @@ public sealed class ValidationWindowController : IDisposable
 
         scenario = armableScenario;
         return true;
+    }
+
+    private static string GetStatusText(ScenarioRunReport report)
+    {
+        if (report.IsSuccess)
+            return "Passed";
+
+        return report.Precondition is { CanRun: false } && string.Equals(report.FailedPhase, "validate", StringComparison.Ordinal)
+            ? "Blocked"
+            : "Failed";
     }
 
     private sealed record ScenarioSelection(string ScenarioId, ValidationRoute Route, ValidationMode Mode);

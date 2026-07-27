@@ -11,17 +11,19 @@ public sealed class ValidationWindowState
     public bool IsRunning { get; private set; }
     public bool IsBusy => IsArmed || IsRunning;
     public string StatusText { get; private set; } = "Idle";
+    public string StatusDetailText { get; private set; } = string.Empty;
     public IReadOnlyList<string> ArtifactPaths { get; private set; } = Array.Empty<string>();
 
     public void SelectScenario(string scenarioId) => SelectedScenarioId = scenarioId;
     public void SelectRoute(ValidationRoute route) => SelectedRoute = route;
     public void SelectMode(ValidationMode mode) => SelectedMode = mode;
 
-    public void SetArmed(string statusText)
+    public void SetArmed(string statusText, string statusDetailText)
     {
         IsArmed = true;
         IsRunning = false;
         StatusText = statusText;
+        StatusDetailText = statusDetailText;
         ArtifactPaths = Array.Empty<string>();
     }
 
@@ -38,14 +40,16 @@ public sealed class ValidationWindowState
         IsArmed = false;
         IsRunning = true;
         StatusText = "Running";
+        StatusDetailText = string.Empty;
         ArtifactPaths = Array.Empty<string>();
     }
 
-    public void SetCompleted(string statusText, IReadOnlyList<string> artifactPaths)
+    public void SetCompleted(string statusText, string? statusDetailText, IReadOnlyList<string> artifactPaths)
     {
         IsArmed = false;
         IsRunning = false;
         StatusText = statusText;
+        StatusDetailText = statusDetailText ?? string.Empty;
         ArtifactPaths = artifactPaths;
     }
 
@@ -54,6 +58,7 @@ public sealed class ValidationWindowState
         IsArmed = false;
         IsRunning = false;
         StatusText = "Idle";
+        StatusDetailText = string.Empty;
         ArtifactPaths = Array.Empty<string>();
     }
 }
