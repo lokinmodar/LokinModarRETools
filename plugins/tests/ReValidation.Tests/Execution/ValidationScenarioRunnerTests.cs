@@ -90,6 +90,28 @@ public sealed class ValidationScenarioRunnerTests
     }
 
     [Fact]
+    public async Task FullProof_BoundsNonCooperativeRestore()
+    {
+        var restoreCanFinish = new TaskCompletionSource<ScenarioRestoreResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var scenario = new RecordingScenario(restoreAsync: _ => new ValueTask<ScenarioRestoreResult>(restoreCanFinish.Task));
+        var runner = new ValidationScenarioRunner(new NullRouteMetadataProvider(), TimeSpan.Zero, new NullEvidenceWriter());
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.FullProof);
+
+        try
+        {
+            var report = await runner.RunAsync(scenario, context, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.False(report.IsSuccess);
+            Assert.Equal("restore", report.FailedPhase);
+            Assert.IsAssignableFrom<OperationCanceledException>(report.Exception);
+        }
+        finally
+        {
+            restoreCanFinish.TrySetResult(new ScenarioRestoreResult(true, "restore", []));
+        }
+    }
+
+    [Fact]
     public async Task FullProof_RecordsFailedRestoreResult()
     {
         var scenario = new RecordingScenario(restore: _ => new ScenarioRestoreResult(false, "restore failed", ["unhook failed"]));
@@ -146,6 +168,21 @@ public sealed class ValidationScenarioRunnerTests
         Assert.Equal(1, second.WriteCount);
     }
 
+    [Fact]
+    public async Task FullProof_ExportsEvidenceAfterCallerCancellation()
+    {
+        using var cancellationSource = new CancellationTokenSource();
+        var writer = new RecordingEvidenceWriter("json", "report.json", requireActiveToken: true);
+        var scenario = new RecordingScenario(assertAction: cancellationSource.Cancel);
+        var runner = new ValidationScenarioRunner(new NullRouteMetadataProvider(), writer);
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.FullProof);
+
+        var report = await runner.RunAsync(scenario, context, cancellationSource.Token);
+
+        Assert.Equal(1, writer.WriteCount);
+        Assert.Single(report.Evidence);
+    }
+
     private sealed class RecordingScenario : IValidationScenario
     {
         private readonly bool assertThrows;
@@ -153,6 +190,7 @@ public sealed class ValidationScenarioRunnerTests
         private readonly bool returnsNullAssert;
         private readonly Action? assertAction;
         private readonly Func<CancellationToken, ScenarioRestoreResult>? restore;
+        private readonly Func<CancellationToken, ValueTask<ScenarioRestoreResult>>? restoreAsync;
 
         public static RecordingScenario? Current { get; private set; }
 
@@ -161,13 +199,15 @@ public sealed class ValidationScenarioRunnerTests
             bool compareMatches = true,
             bool returnsNullAssert = false,
             Action? assertAction = null,
-            Func<CancellationToken, ScenarioRestoreResult>? restore = null)
+            Func<CancellationToken, ScenarioRestoreResult>? restore = null,
+            Func<CancellationToken, ValueTask<ScenarioRestoreResult>>? restoreAsync = null)
         {
             this.assertThrows = assertThrows;
             this.compareMatches = compareMatches;
             this.returnsNullAssert = returnsNullAssert;
             this.assertAction = assertAction;
             this.restore = restore;
+            this.restoreAsync = restoreAsync;
         }
 
         public List<string> Calls { get; } = [];
@@ -214,6 +254,9 @@ public sealed class ValidationScenarioRunnerTests
         public ValueTask<ScenarioRestoreResult> RestoreAsync(ScenarioExecutionContext context, ScenarioCapture capture, ScenarioOverrideTicket? ticket, CancellationToken cancellationToken)
         {
             Calls.Add("restore");
+            if (restoreAsync is not null)
+                return restoreAsync(cancellationToken);
+
             return ValueTask.FromResult(restore?.Invoke(cancellationToken) ?? new ScenarioRestoreResult(true, "restore", []));
         }
     }
@@ -235,12 +278,15 @@ public sealed class ValidationScenarioRunnerTests
         }
     }
 
-    private sealed class RecordingEvidenceWriter(string kind, string outputPath) : IEvidenceWriter
+    private sealed class RecordingEvidenceWriter(string kind, string outputPath, bool requireActiveToken = false) : IEvidenceWriter
     {
         public int WriteCount { get; private set; }
 
         public ValueTask<EvidenceWriteResult> WriteAsync(ScenarioRunReport report, ScenarioExecutionContext context, CancellationToken cancellationToken)
         {
+            if (requireActiveToken)
+                cancellationToken.ThrowIfCancellationRequested();
+
             WriteCount++;
             return ValueTask.FromResult(new EvidenceWriteResult(kind, outputPath));
         }

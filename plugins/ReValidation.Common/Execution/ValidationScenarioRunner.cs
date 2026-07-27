@@ -40,19 +40,19 @@ public sealed class ValidationScenarioRunner
         {
             report = report.WithPrecondition(await scenario.ValidateAsync(context, cancellationToken));
             if (!report.CanRun)
-                return await ExportAsync(report.MarkBlocked(), context, cancellationToken);
+                return await ExportAsync(report.MarkBlocked(), context);
 
             capture = await scenario.CaptureAsync(context, cancellationToken);
             report = report.WithCapture(capture);
 
             if (context.Mode is ValidationMode.CaptureOnly)
-                return await ExportAsync(report.MarkSuccess(), context, cancellationToken);
+                return await ExportAsync(report.MarkSuccess(), context);
 
             var compare = await scenario.CompareAsync(context, capture, cancellationToken);
             report = report.WithCompare(compare).MarkFromCompare(compare);
 
             if (context.Mode is ValidationMode.Compare)
-                return await ExportAsync(report.FailedPhase is null ? report.MarkSuccess() : report, context, cancellationToken);
+                return await ExportAsync(report.FailedPhase is null ? report.MarkSuccess() : report, context);
 
             ticket = await scenario.OverrideAsync(context, capture, cancellationToken);
             overrideStarted = ticket is not null;
@@ -77,7 +77,9 @@ public sealed class ValidationScenarioRunner
 
                 try
                 {
-                    var restore = await scenario.RestoreAsync(context, capture, ticket, cleanupCancellationSource.Token);
+                    var restore = await scenario.RestoreAsync(context, capture, ticket, cleanupCancellationSource.Token)
+                        .AsTask()
+                        .WaitAsync(cleanupCancellationSource.Token);
                     report = report.WithRestore(restore).MergeRestoreOutcome(restore);
                 }
                 catch (Exception ex)
@@ -88,14 +90,14 @@ public sealed class ValidationScenarioRunner
             }
         }
 
-        return await ExportAsync(report, context, cancellationToken);
+        return await ExportAsync(report, context);
     }
 
-    private async Task<ScenarioRunReport> ExportAsync(ScenarioRunReport report, ScenarioExecutionContext context, CancellationToken cancellationToken)
+    private async Task<ScenarioRunReport> ExportAsync(ScenarioRunReport report, ScenarioExecutionContext context)
     {
         foreach (var evidenceWriter in evidenceWriters)
         {
-            var evidence = await evidenceWriter.WriteAsync(report, context, cancellationToken);
+            var evidence = await evidenceWriter.WriteAsync(report, context, CancellationToken.None);
             report = report.WithEvidence(evidence);
         }
 
