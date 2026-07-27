@@ -122,6 +122,35 @@ public sealed class TooltipScenarioTests
         Assert.Contains(report.CompareResult!.Differences, difference => difference.Contains("Potion", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task ArmCuePolling_IsReady_WhenTooltipCaptureSucceeds()
+    {
+        var scenario = new TooltipItemDetailLocalScenario(
+            new FakeTooltipProbe("item", "Potion"),
+            new LocalClientStructsAvailabilityDetector(propsPath: null, projectPath: null));
+
+        var armable = Assert.IsAssignableFrom<IArmableValidationScenario>(scenario);
+        var cue = await armable.PollArmCueAsync(CancellationToken.None);
+
+        Assert.True(cue.IsReady);
+        Assert.Equal("Tooltip cue ready.", cue.StatusText);
+    }
+
+    [Fact]
+    public async Task ArmCuePolling_Waits_WhenTooltipIsNotVisible()
+    {
+        var scenario = new TooltipActionDetailOwnerScenario(
+            new ThrowingTooltipProbe("ActionDetail addon is not visible."),
+            [new SignatureRequirement("actionTooltip", "48 89 ?? ??", mustBeUnique: true)],
+            [new SignatureResolution("actionTooltip", matchCount: 1, rva: 0x1234, failureReason: null)]);
+
+        var armable = Assert.IsAssignableFrom<IArmableValidationScenario>(scenario);
+        var cue = await armable.PollArmCueAsync(CancellationToken.None);
+
+        Assert.False(cue.IsReady);
+        Assert.Equal("ActionDetail addon is not visible.", cue.StatusText);
+    }
+
     private sealed class FakeTooltipProbe(string detailKind, string visibleText) : ITooltipProbe
     {
         private string? originalVisibleText;
@@ -155,6 +184,16 @@ public sealed class TooltipScenarioTests
     {
         public ValueTask<TooltipSnapshot> CaptureReferenceAsync(CancellationToken cancellationToken) =>
             ValueTask.FromResult(new TooltipSnapshot(detailKind, 5333, [visibleText], visibleText));
+    }
+
+    private sealed class ThrowingTooltipProbe(string message) : ITooltipProbe
+    {
+        public ValueTask<TooltipSnapshot> CaptureAsync(CancellationToken cancellationToken) =>
+            ValueTask.FromException<TooltipSnapshot>(new InvalidOperationException(message));
+
+        public ValueTask<ScenarioOverrideTicket?> ApplySentinelOverrideAsync(string sentinel, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ValueTask<ScenarioAssertResult?> AssertSentinelAsync(string sentinel, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ValueTask<ScenarioRestoreResult> RestoreAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class NullRouteMetadataProvider(ValidationRoute route) : IRouteMetadataProvider

@@ -22,7 +22,7 @@ public interface ITooltipComparisonSource
     ValueTask<TooltipSnapshot> CaptureReferenceAsync(CancellationToken cancellationToken);
 }
 
-public abstract class TooltipValidationScenarioBase : IValidationScenario
+public abstract class TooltipValidationScenarioBase : IValidationScenario, IArmableValidationScenario
 {
     protected const string Sentinel = "[REVALIDATION] Tooltip Sentinel";
     private readonly ITooltipProbe probe;
@@ -50,8 +50,24 @@ public abstract class TooltipValidationScenarioBase : IValidationScenario
     }
 
     public ValidationScenarioDefinition Definition { get; }
+    public string ArmPrompt => $"Arm the scenario, then {Definition.Description}";
 
     public abstract ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken);
+
+    public async ValueTask<ScenarioArmState> PollArmCueAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var snapshot = await probe.CaptureAsync(cancellationToken);
+            return string.Equals(snapshot.DetailKind, detailKind, StringComparison.Ordinal)
+                ? new ScenarioArmState(true, "Tooltip cue ready.")
+                : new ScenarioArmState(false, $"Waiting for {detailKind} tooltip cue.");
+        }
+        catch (InvalidOperationException exception)
+        {
+            return new ScenarioArmState(false, exception.Message);
+        }
+    }
 
     protected ScenarioPreconditionResult? GetRuntimePreconditionFailure()
     {

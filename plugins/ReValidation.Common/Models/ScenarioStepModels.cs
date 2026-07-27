@@ -4,6 +4,8 @@ namespace ReValidation.Common.Models;
 
 public sealed record ScenarioPreconditionResult(bool CanRun, string? BlockingReason);
 
+public sealed record ScenarioArmState(bool IsReady, string StatusText);
+
 public sealed record ScenarioCapture(string Summary, JsonObject Data);
 
 public sealed record ScenarioCompareResult(bool IsMatch, string Summary, IReadOnlyList<string> Differences);
