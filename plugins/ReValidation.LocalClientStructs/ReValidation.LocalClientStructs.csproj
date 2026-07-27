@@ -4,6 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <RequireLocalClientStructs Condition="'$(RequireLocalClientStructs)' == ''">false</RequireLocalClientStructs>
   </PropertyGroup>
 
   <Import Project="..\local\LocalClientStructs.props" Condition="Exists('..\local\LocalClientStructs.props')" />
@@ -11,5 +12,14 @@
   <ItemGroup>
     <ProjectReference Include="$(ClientStructsProjectPath)" Condition="'$(ClientStructsProjectPath)' != '' and Exists('$(ClientStructsProjectPath)')" />
   </ItemGroup>
+
+  <Target Name="ValidateLocalClientStructs">
+    <Error Condition="'$(RequireLocalClientStructs)' == 'true' and !Exists('$(MSBuildThisFileDirectory)..\local\LocalClientStructs.props')"
+           Text="Local ClientStructs is required, but plugins/local/LocalClientStructs.props is missing." />
+    <Error Condition="'$(RequireLocalClientStructs)' == 'true' and '$(ClientStructsProjectPath)' == ''"
+           Text="Local ClientStructs is required, but ClientStructsProjectPath is empty." />
+    <Error Condition="'$(RequireLocalClientStructs)' == 'true' and '$(ClientStructsProjectPath)' != '' and !Exists('$(ClientStructsProjectPath)')"
+           Text="Local ClientStructs is required, but ClientStructsProjectPath does not exist: $(ClientStructsProjectPath)." />
+  </Target>
 
 </Project>
