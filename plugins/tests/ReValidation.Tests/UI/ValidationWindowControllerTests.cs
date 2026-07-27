@@ -27,6 +27,38 @@ public sealed class ValidationWindowControllerTests
         Assert.Contains(controller.State.ArtifactPaths, path => path.EndsWith(".md", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public async Task RunSelectedScenario_RunnerThrows_PublishesFailedStatus()
+    {
+        var controller = CreateController(new ThrowingRunner());
+
+        await controller.RunSelectedScenarioAsync(CancellationToken.None);
+
+        Assert.Equal("Failed", controller.State.StatusText);
+        Assert.Empty(controller.State.ArtifactPaths);
+    }
+
+    [Fact]
+    public async Task RunSelectedScenario_RunnerCancels_PublishesCancelledStatus()
+    {
+        var controller = CreateController(new CancellingRunner());
+
+        await controller.RunSelectedScenarioAsync(CancellationToken.None);
+
+        Assert.Equal("Cancelled", controller.State.StatusText);
+        Assert.Empty(controller.State.ArtifactPaths);
+    }
+
+    private static ValidationWindowController CreateController(IValidationScenarioRunner runner)
+    {
+        var controller = new ValidationWindowController(
+            new ValidationWindowState(),
+            ValidationScenarioRegistry.ForTests(new StubScenario("journal.completed-entries")),
+            runner);
+        controller.State.SelectScenario("journal.completed-entries");
+        return controller;
+    }
+
     private sealed class StubRunner : IValidationScenarioRunner
     {
         public Task<ScenarioRunReport> RunAsync(IValidationScenario scenario, ScenarioExecutionContext context, CancellationToken cancellationToken) =>
@@ -34,6 +66,18 @@ public sealed class ValidationWindowControllerTests
                 ScenarioRunReport.CreateForTests(scenario.Definition.Id, context.Route, context.Mode)
                     .WithEvidence(new EvidenceWriteResult("json", "evidence.json"))
                     .WithEvidence(new EvidenceWriteResult("markdown", "evidence.md")));
+    }
+
+    private sealed class ThrowingRunner : IValidationScenarioRunner
+    {
+        public Task<ScenarioRunReport> RunAsync(IValidationScenario scenario, ScenarioExecutionContext context, CancellationToken cancellationToken) =>
+            Task.FromException<ScenarioRunReport>(new InvalidOperationException("runner failed"));
+    }
+
+    private sealed class CancellingRunner : IValidationScenarioRunner
+    {
+        public Task<ScenarioRunReport> RunAsync(IValidationScenario scenario, ScenarioExecutionContext context, CancellationToken cancellationToken) =>
+            Task.FromCanceled<ScenarioRunReport>(new CancellationToken(canceled: true));
     }
 
     private sealed class StubScenario(string id) : IValidationScenario

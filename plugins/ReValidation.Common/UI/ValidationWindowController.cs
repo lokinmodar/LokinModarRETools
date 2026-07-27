@@ -32,10 +32,21 @@ public sealed class ValidationWindowController
     public async Task RunSelectedScenarioAsync(CancellationToken cancellationToken)
     {
         State.SetRunning();
-        var scenario = registry.GetRequired(State.SelectedScenarioId!);
-        var context = contextFactory.Create(State.SelectedRoute, State.SelectedMode);
-        var report = await runner.RunAsync(scenario, context, cancellationToken);
-        State.SetCompleted(report.IsSuccess ? "Passed" : "Failed", report.ArtifactPaths);
+        try
+        {
+            var scenario = registry.GetRequired(State.SelectedScenarioId!);
+            var context = contextFactory.Create(State.SelectedRoute, State.SelectedMode);
+            var report = await runner.RunAsync(scenario, context, cancellationToken);
+            State.SetCompleted(report.IsSuccess ? "Passed" : "Failed", report.ArtifactPaths);
+        }
+        catch (OperationCanceledException)
+        {
+            State.SetCompleted("Cancelled", Array.Empty<string>());
+        }
+        catch (Exception)
+        {
+            State.SetCompleted("Failed", Array.Empty<string>());
+        }
     }
 }
 

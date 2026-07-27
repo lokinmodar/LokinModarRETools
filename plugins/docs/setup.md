@@ -23,5 +23,5 @@ The window fixes the route, lets the operator select a registered scenario and v
 `Idle`, `Running`, `Passed`, or `Failed`, and lists the JSON and Markdown evidence artifact paths after
 a run. Artifacts are written beneath the plugin configuration directory in `evidence`.
 
-The route shells do not invent live Journal or tooltip probes. Register a route-specific runtime adapter
-and the required owner-signature inputs before an operator can select and execute a scenario.
+The route shells register the Journal and tooltip scenario definitions but fail closed until a route-specific
+runtime adapter and the required owner-signature inputs are configured.

@@ -53,7 +53,7 @@ public sealed class Plugin : IDalamudPlugin
 
         return new ValidationWindowController(
             new ValidationWindowState(),
-            new ValidationScenarioRegistry([]),
+            LocalClientStructsScenarioComposition.CreateRegistry(),
             runner,
             new ValidationScenarioContextFactory(evidenceRoot));
     }

@@ -39,9 +39,25 @@ public sealed class ValidationWindow : Window
         }
 
         if (controller.State.SelectedScenarioId is not null && ImGui.Button("Run selected scenario"))
-            _ = controller.RunSelectedScenarioAsync(CancellationToken.None);
+            _ = ObserveRunAsync();
 
         foreach (var artifactPath in controller.State.ArtifactPaths)
             ImGui.TextUnformatted(artifactPath);
+    }
+
+    private async Task ObserveRunAsync()
+    {
+        try
+        {
+            await controller.RunSelectedScenarioAsync(CancellationToken.None);
+        }
+        catch (OperationCanceledException)
+        {
+            controller.State.SetCompleted("Cancelled", Array.Empty<string>());
+        }
+        catch (Exception)
+        {
+            controller.State.SetCompleted("Failed", Array.Empty<string>());
+        }
     }
 }
