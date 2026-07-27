@@ -12,13 +12,20 @@ visible text, arbitrary context metadata, exception messages, and writer excepti
 
 ## Journal.CompletedEntries
 
-Open the completed Journal list. Both routes capture only the completed-entry count for evidence;
-entry text and quest keys remain in the in-memory Journal snapshot used for comparison. Full proof
-applies `[REVALIDATION] Journal Sentinel`, verifies it, and restores the original Journal text.
-Compare and FullProof require an independent `IJournalCompletedEntriesComparisonSource`; the run blocks
-instead of treating a missing reference as a successful comparison.
-The local route blocks full proof when local ClientStructs is unavailable. The owner-signature route
-blocks when any scenario-required signature is unresolved or non-unique.
+Open the completed Journal list. Both routes currently capture completed quest state from `QuestManager`
+and the quest sheet rather than mutating a pre-UI Journal provider. Evidence exports only the completed-entry
+count; entry text and quest keys remain only in the in-memory snapshot used for comparison.
+
+`Compare` requires an independent `IJournalCompletedEntriesComparisonSource`. The run blocks instead of
+treating a missing reference as a successful comparison.
+
+`OverrideAssert` and `FullProof` are intentionally blocked for `Journal.CompletedEntries` on both routes.
+That is the current limit of the reverse-engineering state, not a hidden failure. We can already prove
+capture and comparison of completed Journal data, but we do not yet claim a safe pre-UI mutation point
+that changes the quest name consumed by the Journal list itself.
+
+The local route also blocks when local ClientStructs wiring is unavailable. The owner-signature route
+also blocks when any scenario-required signature is unresolved or non-unique.
 
 ## Tooltip.ItemDetail and Tooltip.ActionDetail
 
@@ -33,13 +40,20 @@ treating a missing reference as a successful comparison.
 ## Operator Workflow
 
 1. Open the route window with `/revalidate-local` or `/revalidate-owner`.
-2. Confirm that the required route-specific runtime adapter and route inputs are configured; otherwise the selected scenario will report a blocked run.
+2. Confirm that the route prerequisites are satisfied:
+   local props/project wiring for the local route, or unique signature resolutions for the owner route.
 3. Select the scenario and the required validation mode: `CaptureOnly`, `Compare`, `OverrideAssert`, or `FullProof`.
 4. Prepare the required Journal or tooltip UI cue, then select `Run selected scenario`.
 5. Wait for the window status to change from `Running` to `Passed`, `Failed`, or `Cancelled`.
 6. Open the JSON and Markdown paths listed in the window and preserve both artifacts with the review notes.
 
-Do not bypass a blocked run. A block means that the route's local ClientStructs availability or required
-owner signatures were not validated. Correct the route-specific prerequisite and run the scenario again.
+Do not bypass a blocked run. A block means one of three things:
+
+- the route prerequisite was not validated
+- the scenario requires an independent comparison source that is not configured
+- the current RE state does not yet support the requested mutation proof honestly
+
+Correct the route-specific prerequisite, or lower the requested mode to one the scenario can prove today,
+and run the scenario again.
 Every configured evidence writer is attempted. A writer failure marks the run failed with a sanitized export
 failure record while allowing later writers to produce any remaining artifact.

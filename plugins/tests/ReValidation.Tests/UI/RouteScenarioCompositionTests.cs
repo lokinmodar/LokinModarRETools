@@ -104,6 +104,44 @@ public sealed class RouteScenarioCompositionTests
         }
     }
 
+    [Theory]
+    [InlineData(ValidationRoute.LocalClientStructs)]
+    [InlineData(ValidationRoute.OwnerSignatures)]
+    public async Task ComposedJournalScenario_BlocksMutationModes_WhenMutationProofIsDisabled(ValidationRoute route)
+    {
+        var journalScenario = route is ValidationRoute.LocalClientStructs
+            ? LocalClientStructsScenarioComposition.CreateRegistry(
+                new LocalClientStructsScenarioDependencies(
+                    new FakeJournalProbe(),
+                    new FakeTooltipProbe("item"),
+                    new FakeTooltipProbe("action"),
+                    new LocalClientStructsAvailabilityDetector(hasLocalConfiguration: true, projectPath: Path.Combine(RepoRoot.Find(), "README.md")),
+                    new FakeJournalComparisonSource(),
+                    SupportsJournalMutationProof: false,
+                    JournalMutationBlockingReason: "Journal override proof is not configured."))
+                .Scenarios.Single(scenario => scenario.Definition.Id == "journal.completed-entries")
+            : OwnerSignaturesScenarioComposition.CreateRegistry(
+                new OwnerSignaturesScenarioDependencies(
+                    new FakeJournalProbe(),
+                    new FakeTooltipProbe("item"),
+                    new FakeTooltipProbe("action"),
+                    [
+                        new SignatureResolution("journalProvider", 1, 0x1234, null),
+                        new SignatureResolution("itemTooltip", 1, 0x2234, null),
+                        new SignatureResolution("actionTooltip", 1, 0x3234, null),
+                    ],
+                    new FakeJournalComparisonSource(),
+                    SupportsJournalMutationProof: false,
+                    JournalMutationBlockingReason: "Journal override proof is not configured."))
+                .Scenarios.Single(scenario => scenario.Definition.Id == "journal.completed-entries");
+        var context = ScenarioExecutionContext.CreateForTests(route, ValidationMode.FullProof);
+
+        var precondition = await journalScenario.ValidateAsync(context, CancellationToken.None);
+
+        Assert.False(precondition.CanRun);
+        Assert.Equal("Journal override proof is not configured.", precondition.BlockingReason);
+    }
+
     private sealed class FakeJournalProbe : IJournalCompletedEntriesProbe
     {
         public ValueTask<JournalCompletedEntriesSnapshot> CaptureAsync(CancellationToken cancellationToken) =>
@@ -119,6 +157,14 @@ public sealed class RouteScenarioCompositionTests
 
         public ValueTask<ScenarioRestoreResult> RestoreAsync(CancellationToken cancellationToken) =>
             ValueTask.FromResult(new ScenarioRestoreResult(true, "noop", []));
+    }
+
+    private sealed class FakeJournalComparisonSource : IJournalCompletedEntriesComparisonSource
+    {
+        public ValueTask<JournalCompletedEntriesSnapshot> CaptureReferenceAsync(CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new JournalCompletedEntriesSnapshot(
+                [new JournalEntryRecord(1, 0, "The Company You Keep", "65632", "reference")],
+                "1 entry"));
     }
 
     private sealed class FakeTooltipProbe(string detailKind) : ITooltipProbe

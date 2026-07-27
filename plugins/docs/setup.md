@@ -1,29 +1,54 @@
 # ReValidation Setup
 
-Task 1 provides the initial solution and project scaffold.
+`ReValidation` now has two real validation routes:
 
-## Local ClientStructs
+- `ReValidation.LocalClientStructs` proves behavior against a local build of `FFXIVClientStructs`.
+- `ReValidation.OwnerSignatures` proves behavior against the `FFXIVClientStructs` shipped by Dalamud while keeping our own signature ownership and runtime probes.
 
-Copy `plugins/local/LocalClientStructs.props.example` to `plugins/local/LocalClientStructs.props` and set `ClientStructsProjectPath` to the local ClientStructs project file.
+Build both plugins and the shared test project with:
 
-Regular builds remain permissive when this file is absent. A `FullProof` local ClientStructs route requires the props file and a project path that resolves to an existing file. Its evidence metadata is limited to the ClientStructs branch, commit, dirty state, assembly SHA-256, and an allowlisted unavailable reason when the route is blocked.
+```powershell
+dotnet build .\plugins\ReValidation.sln
+dotnet test .\plugins\tests\ReValidation.Tests\ReValidation.Tests.csproj
+```
 
-## Plugin Shells
+Both plugins use the real `Dalamud.NET.Sdk` and require a local Dalamud development installation at the SDK default location or a valid `DALAMUD_HOME`.
 
-Build the route plugins with `dotnet build .\plugins\ReValidation.sln`. Both plugin projects use the
-real `Dalamud.NET.Sdk` and require a local Dalamud development installation at the SDK's standard
-location (or `DALAMUD_HOME`).
+## Local ClientStructs Route
+
+Copy `plugins/local/LocalClientStructs.props.example` to `plugins/local/LocalClientStructs.props` and set `ClientStructsProjectPath` to your local `FFXIVClientStructs\FFXIVClientStructs\FFXIVClientStructs.csproj`.
+
+When this props file exists, the local route switches from the SDK-provided `FFXIVClientStructs.dll` to a direct `ProjectReference` against that local project. This is the route to use when the validation target is "does the exact local ClientStructs branch I intend to merge really behave this way in game?"
+
+Regular builds stay permissive when the props file is absent, but the route reports a blocked state instead of pretending local validation is available. Route metadata exports only:
+
+- ClientStructs branch
+- ClientStructs commit
+- dirty state
+- loaded assembly SHA-256
+- an allowlisted blocking reason when local configuration is missing
+
+## Owner Signatures Route
+
+The owner route keeps the runtime on top of the `FFXIVClientStructs` assembly provided by Dalamud. It resolves and records our owned signatures, then drives the same validation scenarios with route-local runtime probes.
+
+Use this route when the validation target is "can we reproduce the same behavior safely without depending on a custom ClientStructs build?"
+
+The current route requires unique matches for:
+
+- `journalProvider`
+- `itemTooltip`
+- `actionTooltip`
+
+If any required signature resolves to zero or multiple matches, the route blocks the scenario rather than downgrading silently.
+
+## Loading The Plugins
 
 Load one route plugin at a time and open its window with the corresponding command:
 
 - `/revalidate-local` opens the Local ClientStructs route.
 - `/revalidate-owner` opens the owner-signature route.
 
-The window fixes the route, lets the operator select a registered scenario and validation mode, shows
-`Idle`, `Running`, `Passed`, or `Failed`, and lists the JSON and Markdown evidence artifact paths after
-a run. Artifacts are written beneath the plugin configuration directory in `evidence`.
+The window fixes the route, lets the operator select a scenario and validation mode, shows `Idle`, `Running`, `Passed`, or `Failed`, and lists the JSON and Markdown evidence paths after a run. Artifacts are written beneath the plugin configuration directory in `evidence`.
 
-The route shells register the concrete Journal and tooltip scenario implementations but fail closed until
-route-specific runtime probes, comparison sources, and the required owner-signature inputs are configured.
-Only one scenario run can be active per loaded plugin. Plugin disposal cancels the active run while the runner
-still performs bounded restore and evidence-export handling.
+Only one scenario run can be active per loaded plugin. Plugin disposal cancels the active run while the runner still performs bounded restore and evidence export handling.
