@@ -13,7 +13,7 @@
     <ProjectReference Include="$(ClientStructsProjectPath)" Condition="'$(ClientStructsProjectPath)' != '' and Exists('$(ClientStructsProjectPath)')" />
   </ItemGroup>
 
-  <Target Name="ValidateLocalClientStructs">
+  <Target Name="ValidateLocalClientStructs" BeforeTargets="Build">
     <Error Condition="'$(RequireLocalClientStructs)' == 'true' and !Exists('$(MSBuildThisFileDirectory)..\local\LocalClientStructs.props')"
            Text="Local ClientStructs is required, but plugins/local/LocalClientStructs.props is missing." />
     <Error Condition="'$(RequireLocalClientStructs)' == 'true' and '$(ClientStructsProjectPath)' == ''"

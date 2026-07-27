@@ -57,7 +57,9 @@ public sealed class RepositoryLayoutTests
         var invalidPath = RunValidation(temp.Path, projectPath);
         Assert.NotEqual(0, invalidPath.ExitCode);
 
-        var validProject = Path.Combine(temp.Path, "ClientStructs.csproj");
+        var validProjectDirectory = Path.Combine(temp.Path, "ClientStructs");
+        Directory.CreateDirectory(validProjectDirectory);
+        var validProject = Path.Combine(validProjectDirectory, "ClientStructs.csproj");
         File.WriteAllText(validProject, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
         File.WriteAllText(Path.Combine(localDirectory, "LocalClientStructs.props"),
             $"<Project><PropertyGroup><ClientStructsProjectPath>{validProject}</ClientStructsProjectPath></PropertyGroup></Project>");
@@ -72,7 +74,7 @@ public sealed class RepositoryLayoutTests
             StartInfo = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "dotnet",
-                Arguments = $"msbuild \"{projectPath}\" /nologo /t:ValidateLocalClientStructs /p:RequireLocalClientStructs=true /v:minimal",
+                Arguments = $"build \"{projectPath}\" --nologo /p:RequireLocalClientStructs=true --verbosity:minimal",
                 WorkingDirectory = workingDirectory,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
