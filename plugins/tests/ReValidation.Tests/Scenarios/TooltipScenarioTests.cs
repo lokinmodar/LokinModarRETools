@@ -5,6 +5,7 @@ using ReValidation.Common.Execution;
 using ReValidation.Common.Models;
 using ReValidation.Common.Scenarios;
 using ReValidation.LocalClientStructs.Scenarios;
+using ReValidation.LocalClientStructs.Services;
 using ReValidation.OwnerSignatures.Scenarios;
 using ReValidation.OwnerSignatures.Services;
 using Xunit;
@@ -35,6 +36,27 @@ public sealed class TooltipScenarioTests
 
         Assert.False(compare.IsMatch);
         Assert.Contains(compare.Differences, diff => diff.Contains("Payload line count mismatch", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task DetailKindMismatch_FailsComparisonAndCapture()
+    {
+        var left = new TooltipSnapshot("item", 5333, ["Potion"], "Potion");
+        var right = new TooltipSnapshot("action", 5333, ["Potion"], "Potion");
+
+        var compare = TooltipComparer.Compare(left, right);
+
+        Assert.False(compare.IsMatch);
+        Assert.Contains(compare.Differences, diff => diff.Contains("DetailKind mismatch", StringComparison.Ordinal));
+
+        var scenario = new TooltipItemDetailLocalScenario(
+            new FakeTooltipProbe("action", "Potion"),
+            new LocalClientStructsAvailabilityDetector(propsPath: null, projectPath: null));
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.LocalClientStructs, ValidationMode.CaptureOnly);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => scenario.CaptureAsync(context, CancellationToken.None).AsTask());
+
+        Assert.Contains("expected 'item'", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

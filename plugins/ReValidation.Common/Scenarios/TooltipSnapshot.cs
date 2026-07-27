@@ -38,6 +38,9 @@ public abstract class TooltipValidationScenarioBase : IValidationScenario
     public async ValueTask<ScenarioCapture> CaptureAsync(ScenarioExecutionContext context, CancellationToken cancellationToken)
     {
         var snapshot = await probe.CaptureAsync(cancellationToken);
+        if (!string.Equals(snapshot.DetailKind, detailKind, StringComparison.Ordinal))
+            throw new InvalidOperationException($"Tooltip detail kind mismatch: expected '{detailKind}' but probe captured '{snapshot.DetailKind}'.");
+
         return new ScenarioCapture(
             $"{detailKind} tooltip captured",
             new JsonObject

@@ -8,6 +8,9 @@ public static class TooltipComparer
     {
         var differences = new List<string>();
 
+        if (!string.Equals(left.DetailKind, right.DetailKind, StringComparison.Ordinal))
+            differences.Add($"DetailKind mismatch: '{left.DetailKind}' vs '{right.DetailKind}'.");
+
         if (left.ResolvedId != right.ResolvedId)
             differences.Add($"ResolvedId mismatch: {left.ResolvedId} vs {right.ResolvedId}.");
 
