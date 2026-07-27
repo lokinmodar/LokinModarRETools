@@ -1,0 +1,6 @@
+{
+  "Author": "lokinmodar",
+  "Name": "ReValidation.OwnerSignatures",
+  "Punchline": "Validates RE findings through plugin-owned signatures.",
+  "Description": "Proof harness for owner signatures with JSON and Markdown evidence."
+}

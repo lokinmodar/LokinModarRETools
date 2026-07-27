@@ -1,0 +1,12 @@
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.Common\bin\Debug\net10.0\ReValidation.Common.deps.json
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.Common\bin\Debug\net10.0\ReValidation.Common.dll
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.Common\bin\Debug\net10.0\ReValidation.Common.pdb
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.Common\obj\Debug\net10.0\ReValidation.Common.GeneratedMSBuildEditorConfig.editorconfig
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.Common\obj\Debug\net10.0\ReValidation.Common.AssemblyInfoInputs.cache
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.Common\obj\Debug\net10.0\ReValidation.Common.AssemblyInfo.cs
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.Common\obj\Debug\net10.0\ReValidation.Common.csproj.CoreCompileInputs.cache
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.Common\obj\Debug\net10.0\ReValidation.Common.sourcelink.json
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.Common\obj\Debug\net10.0\ReValidation.Common.dll
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.Common\obj\Debug\net10.0\refint\ReValidation.Common.dll
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.Common\obj\Debug\net10.0\ReValidation.Common.pdb
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.Common\obj\Debug\net10.0\ref\ReValidation.Common.dll

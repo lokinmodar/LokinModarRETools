@@ -1,0 +1,6 @@
+{
+  "Author": "lokinmodar",
+  "Name": "ReValidation.LocalClientStructs",
+  "Punchline": "Validates RE findings against a local ClientStructs build.",
+  "Description": "Proof harness for local ClientStructs mappings with JSON and Markdown evidence."
+}

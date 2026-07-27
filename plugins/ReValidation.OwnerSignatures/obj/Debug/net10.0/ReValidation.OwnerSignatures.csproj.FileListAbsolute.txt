@@ -1,0 +1,12 @@
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.OwnerSignatures\bin\Debug\net10.0\ReValidation.OwnerSignatures.deps.json
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.OwnerSignatures\bin\Debug\net10.0\ReValidation.OwnerSignatures.dll
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.OwnerSignatures\bin\Debug\net10.0\ReValidation.OwnerSignatures.pdb
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.OwnerSignatures\obj\Debug\net10.0\ReValidation.OwnerSignatures.GeneratedMSBuildEditorConfig.editorconfig
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.OwnerSignatures\obj\Debug\net10.0\ReValidation.OwnerSignatures.AssemblyInfoInputs.cache
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.OwnerSignatures\obj\Debug\net10.0\ReValidation.OwnerSignatures.AssemblyInfo.cs
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.OwnerSignatures\obj\Debug\net10.0\ReValidation.OwnerSignatures.csproj.CoreCompileInputs.cache
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.OwnerSignatures\obj\Debug\net10.0\ReValidation.OwnerSignatures.sourcelink.json
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.OwnerSignatures\obj\Debug\net10.0\ReValidation.OwnerSignatures.dll
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.OwnerSignatures\obj\Debug\net10.0\refint\ReValidation.OwnerSignatures.dll
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.OwnerSignatures\obj\Debug\net10.0\ReValidation.OwnerSignatures.pdb
+C:\Dante\_dalamud\LokinModarRETools\.worktrees\feature-revalidation-plugins\plugins\ReValidation.OwnerSignatures\obj\Debug\net10.0\ref\ReValidation.OwnerSignatures.dll
