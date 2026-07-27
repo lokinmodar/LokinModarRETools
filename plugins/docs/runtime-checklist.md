@@ -68,17 +68,27 @@ Run steps:
 
 ### Tooltip.ItemDetail
 
-1. Hover or open a normal item tooltip.
-2. Run `CaptureOnly`.
-3. Run `Compare` when an independent comparison source is configured.
-4. Run `OverrideAssert` or `FullProof` to confirm the sentinel is applied and restored.
+1. Select the tooltip scenario and mode first.
+2. Set the arm window duration in seconds.
+3. Select `Arm selected scenario`.
+4. Hover or open a normal item tooltip before the arm window expires.
+5. Wait for the window status to move from `Armed` to `Running`.
+6. Run `Compare` when an independent comparison source is configured.
+7. Run `OverrideAssert` or `FullProof` to confirm the sentinel is applied and restored.
+8. Use `Run selected scenario now` only when the tooltip is already pinned/persistent and you do not
+   need the armed hover window.
 
 ### Tooltip.ActionDetail
 
-1. Hover or open an action tooltip.
-2. Run `CaptureOnly`.
-3. Run `Compare` when an independent comparison source is configured.
-4. Run `OverrideAssert` or `FullProof` to confirm the sentinel is applied and restored.
+1. Select the tooltip scenario and mode first.
+2. Set the arm window duration in seconds.
+3. Select `Arm selected scenario`.
+4. Hover or open an action tooltip before the arm window expires.
+5. Wait for the window status to move from `Armed` to `Running`.
+6. Run `Compare` when an independent comparison source is configured.
+7. Run `OverrideAssert` or `FullProof` to confirm the sentinel is applied and restored.
+8. Use `Run selected scenario now` only when the tooltip is already pinned/persistent and you do not
+   need the armed hover window.
 
 ## Evidence Review
 

@@ -38,15 +38,22 @@ any scenario-required signature is unresolved or non-unique.
 Compare and FullProof require an independent `ITooltipComparisonSource`; the run blocks instead of
 treating a missing reference as a successful comparison.
 
+These scenarios now support an armed execution path in both route windows. Use `Arm selected scenario`
+for hover-driven captures, then perform the hover within the configured arm window. `Journal.CompletedEntries`
+remains a direct `Run selected scenario` flow because the Journal window is already persistent and does
+not depend on a transient hover cue.
+
 ## Operator Workflow
 
 1. Open the route window with `/revalidate-local` or `/revalidate-owner`.
 2. Confirm that the route prerequisites are satisfied:
    local props/project wiring for the local route, or unique signature resolutions for the owner route.
 3. Select the scenario and the required validation mode: `CaptureOnly`, `Compare`, `OverrideAssert`, or `FullProof`.
-4. Prepare the required Journal or tooltip UI cue, then select `Run selected scenario`.
-5. Wait for the window status to change from `Running` to `Passed`, `Failed`, or `Cancelled`.
-6. Open the JSON and Markdown paths listed in the window and preserve both artifacts with the review notes.
+4. For `Journal.CompletedEntries`, prepare the Journal UI cue and select `Run selected scenario`.
+5. For tooltip scenarios, prefer `Arm selected scenario`, perform the hover inside the configured timeout,
+   and wait for the status to move from `Armed` to `Running`.
+6. Wait for the window status to change from `Running` to `Passed`, `Failed`, `Timed out`, or `Cancelled`.
+7. Open the JSON and Markdown paths listed in the window and preserve both artifacts with the review notes.
 
 Do not bypass a blocked run. A block means one of three things:
 
