@@ -6,4 +6,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <Import Project="..\local\LocalClientStructs.props" Condition="Exists('..\local\LocalClientStructs.props')" />
+
+  <ItemGroup>
+    <ProjectReference Include="$(ClientStructsProjectPath)" Condition="'$(ClientStructsProjectPath)' != '' and Exists('$(ClientStructsProjectPath)')" />
+  </ItemGroup>
+
 </Project>

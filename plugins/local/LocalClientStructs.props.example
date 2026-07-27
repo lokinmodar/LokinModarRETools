@@ -1,5 +1,5 @@
 <Project>
   <PropertyGroup>
-    <LocalClientStructsPath>$(MSBuildThisFileDirectory)..\..\FFXIVClientStructs</LocalClientStructsPath>
+    <ClientStructsProjectPath>$(MSBuildThisFileDirectory)..\..\FFXIVClientStructs\FFXIVClientStructs.csproj</ClientStructsProjectPath>
   </PropertyGroup>
 </Project>

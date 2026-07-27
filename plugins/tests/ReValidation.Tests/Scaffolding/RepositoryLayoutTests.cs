@@ -15,4 +15,18 @@ public sealed class RepositoryLayoutTests
         Assert.True(File.Exists(Path.Combine(pluginsRoot, "tests", "ReValidation.Tests", "ReValidation.Tests.csproj")));
         Assert.True(File.Exists(Path.Combine(pluginsRoot, "local", "LocalClientStructs.props.example")));
     }
+
+    [Fact]
+    public void LocalClientStructsProjectWiresOptionalClientStructsReference()
+    {
+        var root = RepoRoot.Find();
+        var project = File.ReadAllText(Path.Combine(root, "plugins", "ReValidation.LocalClientStructs", "ReValidation.LocalClientStructs.csproj"));
+        var propsExample = File.ReadAllText(Path.Combine(root, "plugins", "local", "LocalClientStructs.props.example"));
+
+        Assert.Contains("LocalClientStructs.props", project);
+        Assert.Contains("ClientStructsProjectPath", project);
+        Assert.Contains("ProjectReference", project);
+        Assert.Contains("Exists", project);
+        Assert.Contains("ClientStructsProjectPath", propsExample);
+    }
 }
