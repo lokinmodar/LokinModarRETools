@@ -170,6 +170,36 @@ public sealed class JournalCompletedEntriesScenarioTests
         Assert.Contains("comparison reference", report.Precondition!.BlockingReason, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(ValidationRoute.LocalClientStructs, ValidationMode.OverrideAssert)]
+    [InlineData(ValidationRoute.LocalClientStructs, ValidationMode.FullProof)]
+    [InlineData(ValidationRoute.OwnerSignatures, ValidationMode.OverrideAssert)]
+    [InlineData(ValidationRoute.OwnerSignatures, ValidationMode.FullProof)]
+    public async Task MutationModes_Block_WhenJournalOverrideProofIsUnavailable(ValidationRoute route, ValidationMode mode)
+    {
+        IValidationScenario scenario = route is ValidationRoute.LocalClientStructs
+            ? new JournalCompletedEntriesLocalScenario(
+                new FakeJournalProbe("The Company You Keep"),
+                new LocalClientStructsAvailabilityDetector(hasLocalConfiguration: true, projectPath: Path.GetTempFileName()),
+                new FakeJournalComparisonSource("The Company You Keep"),
+                supportsMutationProof: false,
+                mutationBlockingReason: "Journal override proof is not configured.")
+            : new JournalCompletedEntriesOwnerScenario(
+                new FakeJournalProbe("The Company You Keep"),
+                [new SignatureRequirement("journalProvider", "48 89 ?? ??", mustBeUnique: true)],
+                [new SignatureResolution("journalProvider", matchCount: 1, rva: 0x1234, failureReason: null)],
+                comparisonSource: new FakeJournalComparisonSource("The Company You Keep"),
+                supportsMutationProof: false,
+                mutationBlockingReason: "Journal override proof is not configured.");
+        var context = ScenarioExecutionContext.CreateForTests(route, mode);
+
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
+            .RunAsync(scenario, context, CancellationToken.None);
+
+        Assert.False(report.IsSuccess);
+        Assert.Equal("Journal override proof is not configured.", report.Precondition!.BlockingReason);
+    }
+
     private sealed class FakeJournalProbe(string originalText) : IJournalCompletedEntriesProbe
     {
         private string? originalText;

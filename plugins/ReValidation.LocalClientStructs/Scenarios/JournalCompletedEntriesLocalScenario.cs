@@ -10,7 +10,9 @@ public sealed class JournalCompletedEntriesLocalScenario(
     IJournalCompletedEntriesProbe probe,
     LocalClientStructsAvailabilityDetector? availabilityDetector = null,
     IJournalCompletedEntriesComparisonSource? comparisonSource = null,
-    string? runtimeBlockingReason = null) : IValidationScenario
+    string? runtimeBlockingReason = null,
+    bool supportsMutationProof = true,
+    string? mutationBlockingReason = null) : IValidationScenario
 {
     private const string Sentinel = "[REVALIDATION] Journal Sentinel";
     private JournalCompletedEntriesSnapshot? capturedSnapshot;
@@ -35,6 +37,13 @@ public sealed class JournalCompletedEntriesLocalScenario(
 
         if (context.Mode is ValidationMode.Compare or ValidationMode.FullProof && comparisonSource is null)
             return ValueTask.FromResult(new ScenarioPreconditionResult(false, "Journal comparison reference source is required."));
+
+        if (context.Mode is ValidationMode.OverrideAssert or ValidationMode.FullProof && !supportsMutationProof)
+            return ValueTask.FromResult(new ScenarioPreconditionResult(
+                false,
+                string.IsNullOrWhiteSpace(mutationBlockingReason)
+                    ? "Journal override proof is not configured."
+                    : mutationBlockingReason));
 
         return ValueTask.FromResult(new ScenarioPreconditionResult(
             true,

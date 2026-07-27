@@ -12,7 +12,9 @@ public sealed class JournalCompletedEntriesOwnerScenario(
     IEnumerable<SignatureResolution>? resolutions = null,
     SignatureGate? signatureGate = null,
     IJournalCompletedEntriesComparisonSource? comparisonSource = null,
-    string? runtimeBlockingReason = null) : IValidationScenario
+    string? runtimeBlockingReason = null,
+    bool supportsMutationProof = true,
+    string? mutationBlockingReason = null) : IValidationScenario
 {
     private const string Sentinel = "[REVALIDATION] Journal Sentinel";
     private readonly IReadOnlyList<SignatureRequirement> requirements = requirements?.ToArray() ?? [];
@@ -46,6 +48,15 @@ public sealed class JournalCompletedEntriesOwnerScenario(
             && context.Mode is ValidationMode.Compare or ValidationMode.FullProof
             && comparisonSource is null)
             return ValueTask.FromResult(new ScenarioPreconditionResult(false, "Journal comparison reference source is required."));
+
+        if (result.CanRun
+            && context.Mode is ValidationMode.OverrideAssert or ValidationMode.FullProof
+            && !supportsMutationProof)
+            return ValueTask.FromResult(new ScenarioPreconditionResult(
+                false,
+                string.IsNullOrWhiteSpace(mutationBlockingReason)
+                    ? "Journal override proof is not configured."
+                    : mutationBlockingReason));
 
         return ValueTask.FromResult(new ScenarioPreconditionResult(result.CanRun, reason));
     }
