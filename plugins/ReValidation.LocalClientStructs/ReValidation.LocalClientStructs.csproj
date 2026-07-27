@@ -10,6 +10,7 @@
   <Import Project="..\local\LocalClientStructs.props" Condition="Exists('..\local\LocalClientStructs.props')" />
 
   <ItemGroup>
+    <ProjectReference Include="..\ReValidation.Common\ReValidation.Common.csproj" />
     <ProjectReference Include="$(ClientStructsProjectPath)" Condition="'$(ClientStructsProjectPath)' != '' and Exists('$(ClientStructsProjectPath)')" />
   </ItemGroup>
 
