@@ -1,17 +1,9 @@
 namespace ReValidation.OwnerSignatures.Services;
 
-public sealed record SignatureResolution
+public sealed record SignatureResolution(string Id, int MatchCount, ulong? Rva, string? FailureReason)
 {
-    public SignatureResolution(string id, int matchCount, ulong? rva, string? failureReason)
+    public SignatureResolution(string id, int matchCount, ulong? rva, string? failureReason, object? compatibility = null)
+        : this(id, matchCount, rva, failureReason)
     {
-        Id = id;
-        MatchCount = matchCount;
-        Rva = rva;
-        FailureReason = failureReason;
     }
-
-    public string Id { get; }
-    public int MatchCount { get; }
-    public ulong? Rva { get; }
-    public string? FailureReason { get; }
 }

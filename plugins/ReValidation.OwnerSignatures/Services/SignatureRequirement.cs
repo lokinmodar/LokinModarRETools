@@ -1,15 +1,9 @@
 namespace ReValidation.OwnerSignatures.Services;
 
-public sealed record SignatureRequirement
+public sealed record SignatureRequirement(string Id, string Pattern, bool MustBeUnique)
 {
-    public SignatureRequirement(string id, string pattern, bool mustBeUnique)
+    public SignatureRequirement(string id, string pattern, bool mustBeUnique, object? compatibility = null)
+        : this(id, pattern, mustBeUnique)
     {
-        Id = id;
-        Pattern = pattern;
-        MustBeUnique = mustBeUnique;
     }
-
-    public string Id { get; }
-    public string Pattern { get; }
-    public bool MustBeUnique { get; }
 }
