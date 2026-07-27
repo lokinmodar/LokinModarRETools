@@ -100,10 +100,7 @@ public sealed unsafe class ActionDetailTooltipProbe : ITooltipProbe
 
     private AtkUnitBase* GetAddon()
     {
-        var address = addonAddressAccessor();
-        return address == nint.Zero
-            ? throw new InvalidOperationException("ActionDetail addon is not visible.")
-            : (AtkUnitBase*)address;
+        return TooltipAddonGuard.RequireVisibleAndReady(addonAddressAccessor(), "ActionDetail");
     }
 
     private AgentActionDetail* GetAgent()

@@ -74,10 +74,7 @@ public sealed unsafe class ItemDetailTooltipProbe : ITooltipProbe
 
     private AddonItemDetail* GetAddon()
     {
-        var address = addonAddressAccessor();
-        return address == nint.Zero
-            ? throw new InvalidOperationException("ItemDetail addon is not visible.")
-            : (AddonItemDetail*)address;
+        return (AddonItemDetail*)TooltipAddonGuard.RequireVisibleAndReady(addonAddressAccessor(), "ItemDetail");
     }
 
     private AgentItemDetail* GetAgent()

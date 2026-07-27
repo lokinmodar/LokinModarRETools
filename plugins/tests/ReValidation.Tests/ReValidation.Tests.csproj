@@ -4,11 +4,17 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DalamudLibPath Condition="'$(DalamudLibPath)' == ''">$([System.IO.Path]::Combine('$(APPDATA)', 'XIVLauncher', 'addon', 'Hooks', 'dev'))\</DalamudLibPath>
   </PropertyGroup>
+  <Import Project="..\..\local\LocalClientStructs.props" Condition="Exists('..\..\local\LocalClientStructs.props')" />
   <ItemGroup>
     <ProjectReference Include="..\..\ReValidation.Common\ReValidation.Common.csproj" />
     <ProjectReference Include="..\..\ReValidation.LocalClientStructs\ReValidation.LocalClientStructs.csproj" />
     <ProjectReference Include="..\..\ReValidation.OwnerSignatures\ReValidation.OwnerSignatures.csproj" />
+    <ProjectReference Include="$(ClientStructsProjectPath)" Condition="'$(ClientStructsProjectPath)' != '' and Exists('$(ClientStructsProjectPath)')" />
+    <Reference Include="FFXIVClientStructs" HintPath="$(DalamudLibPath)FFXIVClientStructs.dll" Condition="'$(ClientStructsProjectPath)' == '' or !Exists('$(ClientStructsProjectPath)')" />
+    <Reference Include="InteropGenerator.Runtime" HintPath="$(DalamudLibPath)InteropGenerator.Runtime.dll" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />

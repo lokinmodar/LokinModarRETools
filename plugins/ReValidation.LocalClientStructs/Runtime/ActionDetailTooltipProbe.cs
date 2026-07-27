@@ -62,10 +62,10 @@ public sealed unsafe class ActionDetailTooltipProbe : ITooltipProbe
         return ValueTask.FromResult(new ScenarioRestoreResult(true, "Tooltip text restored", []));
     }
 
-    private static unsafe IReadOnlyList<string> CollectPayloadLines(AddonActionDetail addon)
+    private static unsafe IReadOnlyList<string> CollectPayloadLines(AddonActionDetail* addon)
     {
         var lines = new List<string>();
-        var unitBase = (AtkUnitBase*)Unsafe.AsPointer(ref addon);
+        var unitBase = (AtkUnitBase*)addon;
         if (unitBase->UldManager.NodeList is null)
             return lines;
 
@@ -84,9 +84,9 @@ public sealed unsafe class ActionDetailTooltipProbe : ITooltipProbe
         return lines;
     }
 
-    private static unsafe AtkTextNode* FindFirstVisibleTextNode(AddonActionDetail addon)
+    private static unsafe AtkTextNode* FindFirstVisibleTextNode(AddonActionDetail* addon)
     {
-        var unitBase = (AtkUnitBase*)Unsafe.AsPointer(ref addon);
+        var unitBase = (AtkUnitBase*)addon;
         if (unitBase->UldManager.NodeList is null)
             return null;
 
@@ -104,12 +104,9 @@ public sealed unsafe class ActionDetailTooltipProbe : ITooltipProbe
         return null;
     }
 
-    private AddonActionDetail GetAddon()
+    private AddonActionDetail* GetAddon()
     {
-        var address = addonAddressAccessor();
-        return address == nint.Zero
-            ? throw new InvalidOperationException("ActionDetail addon is not visible.")
-            : *(AddonActionDetail*)address;
+        return (AddonActionDetail*)TooltipAddonGuard.RequireVisibleAndReady(addonAddressAccessor(), "ActionDetail");
     }
 
     private AgentActionDetail* GetAgent()
