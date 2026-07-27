@@ -56,6 +56,7 @@ public sealed class Plugin : IDalamudPlugin
     private static ValidationWindowController BuildController(IDalamudPluginInterface pluginInterface)
     {
         var evidenceRoot = Path.Combine(pluginInterface.GetPluginConfigDirectory(), "evidence");
+        var diagnosticsSink = new PluginLogDiagnosticsSink(PluginServices.PluginLog);
         var clientStructsAssembly = typeof(Framework).Assembly;
         var buildMetadata = LocalClientStructsBuildMetadataLoader.Load(typeof(Plugin).Assembly, clientStructsAssembly);
         InitializeLocalClientStructsRuntime(buildMetadata);
@@ -72,6 +73,7 @@ public sealed class Plugin : IDalamudPlugin
                 JournalMutationBlockingReason: "Journal override proof is not configured."));
         var runner = new ValidationScenarioRunner(
             LocalClientStructsBuildMetadataLoader.CreateMetadataProvider(buildMetadata),
+            diagnosticsSink,
             new JsonEvidenceWriter(new EvidencePathBuilder()),
             new MarkdownEvidenceWriter(new EvidencePathBuilder()));
 
@@ -79,7 +81,8 @@ public sealed class Plugin : IDalamudPlugin
             new ValidationWindowState(),
             registry,
             runner,
-            new ValidationScenarioContextFactory(evidenceRoot));
+            new ValidationScenarioContextFactory(evidenceRoot),
+            diagnosticsSink);
     }
 
     private static void InitializeLocalClientStructsRuntime(LocalClientStructsBuildMetadata buildMetadata)
