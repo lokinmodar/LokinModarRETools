@@ -14,7 +14,7 @@ public sealed class LocalClientStructsAvailabilityDetector(string? propsPath, st
         if (mode is not ValidationMode.FullProof)
             return new LocalClientStructsAvailability(true, null, projectPath);
 
-        if (string.IsNullOrWhiteSpace(propsPath))
+        if (string.IsNullOrWhiteSpace(propsPath) || !File.Exists(propsPath))
             return new LocalClientStructsAvailability(false, "plugins/local/LocalClientStructs.props is missing.", null);
 
         if (string.IsNullOrWhiteSpace(projectPath) || !File.Exists(projectPath))

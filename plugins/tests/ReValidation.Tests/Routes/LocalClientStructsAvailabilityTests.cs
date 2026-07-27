@@ -17,6 +17,46 @@ public sealed class LocalClientStructsAvailabilityTests
     }
 
     [Fact]
+    public void NonexistentProps_BlocksFullProofAsMissing()
+    {
+        var projectPath = Path.GetTempFileName();
+        var propsPath = Path.Combine(Path.GetTempPath(), $"revalidation-{Guid.NewGuid():N}.props");
+
+        try
+        {
+            var detector = new LocalClientStructsAvailabilityDetector(propsPath, projectPath);
+            var availability = detector.Evaluate(ValidationMode.FullProof);
+
+            Assert.False(availability.IsAvailable);
+            Assert.Equal("plugins/local/LocalClientStructs.props is missing.", availability.BlockingReason);
+        }
+        finally
+        {
+            File.Delete(projectPath);
+        }
+    }
+
+    [Fact]
+    public void UnresolvedProjectPath_BlocksFullProof()
+    {
+        var propsPath = Path.GetTempFileName();
+        var projectPath = Path.Combine(Path.GetTempPath(), $"revalidation-{Guid.NewGuid():N}.csproj");
+
+        try
+        {
+            var detector = new LocalClientStructsAvailabilityDetector(propsPath, projectPath);
+            var availability = detector.Evaluate(ValidationMode.FullProof);
+
+            Assert.False(availability.IsAvailable);
+            Assert.Equal("ClientStructsProjectPath could not be resolved.", availability.BlockingReason);
+        }
+        finally
+        {
+            File.Delete(propsPath);
+        }
+    }
+
+    [Fact]
     public async Task RealMetadataProvider_ReportsBranchCommitDirtyStateAndAssemblyHash()
     {
         var provider = new RealLocalClientStructsMetadataProvider(
@@ -31,5 +71,11 @@ public sealed class LocalClientStructsAvailabilityTests
         Assert.Equal("abc1234", metadata["clientStructsCommit"]);
         Assert.Equal("true", metadata["clientStructsDirty"]);
         Assert.Equal("deadbeef", metadata["clientStructsAssemblySha256"]);
+    }
+
+    [Fact]
+    public void MissingMetadataProvider_RejectsUnallowlistedBlockingReason()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new MissingLocalClientStructsMetadataProvider("C:\\sensitive-path"));
     }
 }
