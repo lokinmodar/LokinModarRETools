@@ -6,12 +6,17 @@ resolves to anything other than exactly one match.
 
 Evidence metadata exposes only `signature:<id>` values containing the match count and, when
 available, the RVA. Signature patterns and resolver failure details are not exported.
+JSON and Markdown artifacts include phase outcomes, comparison difference counts, override/restore
+outcomes, and scenario-specific allowlisted capture metrics. Raw Journal text, tooltip payload lines,
+visible text, arbitrary context metadata, exception messages, and writer exception details are not exported.
 
 ## Journal.CompletedEntries
 
 Open the completed Journal list. Both routes capture only the completed-entry count for evidence;
 entry text and quest keys remain in the in-memory Journal snapshot used for comparison. Full proof
 applies `[REVALIDATION] Journal Sentinel`, verifies it, and restores the original Journal text.
+Compare and FullProof require an independent `IJournalCompletedEntriesComparisonSource`; the run blocks
+instead of treating a missing reference as a successful comparison.
 The local route blocks full proof when local ClientStructs is unavailable. The owner-signature route
 blocks when any scenario-required signature is unresolved or non-unique.
 
@@ -22,6 +27,8 @@ evidence; payload lines and visible text remain in memory for tooltip comparison
 `[REVALIDATION] Tooltip Sentinel`, verifies it, and restores the original visible text. The local
 route blocks full proof when local ClientStructs is unavailable. The owner-signature route blocks when
 any scenario-required signature is unresolved or non-unique.
+Compare and FullProof require an independent `ITooltipComparisonSource`; the run blocks instead of
+treating a missing reference as a successful comparison.
 
 ## Operator Workflow
 
@@ -34,3 +41,5 @@ any scenario-required signature is unresolved or non-unique.
 
 Do not bypass a blocked run. A block means that the route's local ClientStructs availability or required
 owner signatures were not validated. Correct the route-specific prerequisite and run the scenario again.
+Every configured evidence writer is attempted. A writer failure marks the run failed with a sanitized export
+failure record while allowing later writers to produce any remaining artifact.

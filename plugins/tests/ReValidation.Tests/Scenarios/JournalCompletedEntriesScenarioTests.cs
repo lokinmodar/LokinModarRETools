@@ -60,10 +60,11 @@ public sealed class JournalCompletedEntriesScenarioTests
         {
             var scenario = new JournalCompletedEntriesLocalScenario(
                 probe,
-                new LocalClientStructsAvailabilityDetector(propsPath, projectPath));
+                new LocalClientStructsAvailabilityDetector(propsPath, projectPath),
+                new FakeJournalComparisonSource("The Company You Keep"));
             var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.LocalClientStructs, ValidationMode.FullProof);
 
-            var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(), new NullEvidenceWriter())
+            var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
                 .RunAsync(scenario, context, CancellationToken.None);
 
             Assert.True(report.IsSuccess);
@@ -83,7 +84,7 @@ public sealed class JournalCompletedEntriesScenarioTests
         var scenario = new JournalCompletedEntriesLocalScenario(new FakeJournalProbe("The Company You Keep"));
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.LocalClientStructs, ValidationMode.FullProof);
 
-        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(), new NullEvidenceWriter())
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
             .RunAsync(scenario, context, CancellationToken.None);
 
         Assert.False(report.IsSuccess);
@@ -98,7 +99,7 @@ public sealed class JournalCompletedEntriesScenarioTests
             new LocalClientStructsAvailabilityDetector(propsPath: null, projectPath: null));
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.LocalClientStructs, ValidationMode.FullProof);
 
-        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(), new NullEvidenceWriter())
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
             .RunAsync(scenario, context, CancellationToken.None);
 
         Assert.False(report.IsSuccess);
@@ -115,7 +116,7 @@ public sealed class JournalCompletedEntriesScenarioTests
             new SignatureGate());
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.FullProof);
 
-        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(), new NullEvidenceWriter())
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
             .RunAsync(scenario, context, CancellationToken.None);
 
         Assert.False(report.IsSuccess);
@@ -128,11 +129,45 @@ public sealed class JournalCompletedEntriesScenarioTests
         var scenario = new JournalCompletedEntriesOwnerScenario(new FakeJournalProbe("The Company You Keep"));
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.FullProof);
 
-        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(), new NullEvidenceWriter())
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
             .RunAsync(scenario, context, CancellationToken.None);
 
         Assert.False(report.IsSuccess);
         Assert.Equal("Journal signature requirements are required.", report.Precondition!.BlockingReason);
+    }
+
+    [Fact]
+    public async Task Compare_UsesReferenceSourceAndReportsMismatch()
+    {
+        var scenario = new JournalCompletedEntriesOwnerScenario(
+            new FakeJournalProbe("The Company You Keep"),
+            [new SignatureRequirement("journalProvider", "48 89 ?? ??", mustBeUnique: true)],
+            [new SignatureResolution("journalProvider", matchCount: 1, rva: 0x1234, failureReason: null)],
+            comparisonSource: new FakeJournalComparisonSource("The Company You Held"));
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.Compare);
+
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
+            .RunAsync(scenario, context, CancellationToken.None);
+
+        Assert.False(report.IsSuccess);
+        Assert.Equal("compare", report.FailedPhase);
+        Assert.Contains(report.CompareResult!.Differences, difference => difference.Contains("The Company You Keep", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Compare_Blocks_WhenReferenceSourceIsMissing()
+    {
+        var scenario = new JournalCompletedEntriesOwnerScenario(
+            new FakeJournalProbe("The Company You Keep"),
+            [new SignatureRequirement("journalProvider", "48 89 ?? ??", mustBeUnique: true)],
+            [new SignatureResolution("journalProvider", matchCount: 1, rva: 0x1234, failureReason: null)]);
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.Compare);
+
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
+            .RunAsync(scenario, context, CancellationToken.None);
+
+        Assert.False(report.IsSuccess);
+        Assert.Contains("comparison reference", report.Precondition!.BlockingReason, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class FakeJournalProbe(string originalText) : IJournalCompletedEntriesProbe
@@ -166,9 +201,17 @@ public sealed class JournalCompletedEntriesScenarioTests
         }
     }
 
-    private sealed class NullRouteMetadataProvider : IRouteMetadataProvider
+    private sealed class FakeJournalComparisonSource(string text) : IJournalCompletedEntriesComparisonSource
     {
-        public ValidationRoute Route => ValidationRoute.LocalClientStructs;
+        public ValueTask<JournalCompletedEntriesSnapshot> CaptureReferenceAsync(CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new JournalCompletedEntriesSnapshot(
+                [new JournalEntryRecord(1, 0, text, "65632", "reference")],
+                "1 entry"));
+    }
+
+    private sealed class NullRouteMetadataProvider(ValidationRoute route) : IRouteMetadataProvider
+    {
+        public ValidationRoute Route => route;
 
         public ValueTask<IReadOnlyDictionary<string, string?>> GetMetadataAsync(CancellationToken cancellationToken) =>
             ValueTask.FromResult<IReadOnlyDictionary<string, string?>>(new Dictionary<string, string?>());
@@ -176,6 +219,8 @@ public sealed class JournalCompletedEntriesScenarioTests
 
     private sealed class NullEvidenceWriter : IEvidenceWriter
     {
+        public string Kind => "null";
+
         public ValueTask<EvidenceWriteResult> WriteAsync(ScenarioRunReport report, ScenarioExecutionContext context, CancellationToken cancellationToken) =>
             ValueTask.FromResult(new EvidenceWriteResult("null", string.Empty));
     }

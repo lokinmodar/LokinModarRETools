@@ -9,6 +9,7 @@ public sealed class ValidationScenarioRunner : IValidationScenarioRunner
     private static readonly TimeSpan CleanupTimeout = TimeSpan.FromSeconds(5);
     private readonly TimeSpan cleanupTimeout;
     private readonly IReadOnlyList<IEvidenceWriter> evidenceWriters;
+    private readonly IRouteMetadataProvider routeMetadataProvider;
 
     public ValidationScenarioRunner(IRouteMetadataProvider routeMetadataProvider, params IEvidenceWriter[] evidenceWriters)
         : this(routeMetadataProvider, CleanupTimeout, evidenceWriters)
@@ -22,6 +23,7 @@ public sealed class ValidationScenarioRunner : IValidationScenarioRunner
             throw new ArgumentOutOfRangeException(nameof(cleanupTimeout));
 
         ArgumentNullException.ThrowIfNull(evidenceWriters);
+        this.routeMetadataProvider = routeMetadataProvider;
         this.cleanupTimeout = cleanupTimeout;
         this.evidenceWriters = evidenceWriters.ToArray();
     }
@@ -34,10 +36,14 @@ public sealed class ValidationScenarioRunner : IValidationScenarioRunner
         var report = ScenarioRunReport.Started(scenario.Definition, context.Route, context.Mode);
         ScenarioCapture? capture = null;
         ScenarioOverrideTicket? ticket = null;
-        var overrideStarted = false;
+        var overrideAttempted = false;
 
         try
         {
+            if (routeMetadataProvider.Route != context.Route)
+                throw new InvalidOperationException($"Route metadata provider '{routeMetadataProvider.Route}' cannot run route '{context.Route}'.");
+
+            report = report.WithRouteMetadata(await routeMetadataProvider.GetMetadataAsync(cancellationToken));
             report = report.WithPrecondition(await scenario.ValidateAsync(context, cancellationToken));
             if (!report.CanRun)
                 return await ExportAsync(report.MarkBlocked(), context);
@@ -51,11 +57,12 @@ public sealed class ValidationScenarioRunner : IValidationScenarioRunner
             var compare = await scenario.CompareAsync(context, capture, cancellationToken);
             report = report.WithCompare(compare).MarkFromCompare(compare);
 
-            if (context.Mode is ValidationMode.Compare)
+            if (context.Mode is ValidationMode.Compare || report.FailedPhase is "compare")
                 return await ExportAsync(report.FailedPhase is null ? report.MarkSuccess() : report, context);
 
+            overrideAttempted = true;
+            report = report.MarkOverrideAttempted();
             ticket = await scenario.OverrideAsync(context, capture, cancellationToken);
-            overrideStarted = ticket is not null;
             report = report.WithOverride(ticket);
 
             var assert = await scenario.AssertAsync(context, capture, ticket, cancellationToken);
@@ -67,7 +74,7 @@ public sealed class ValidationScenarioRunner : IValidationScenarioRunner
         }
         finally
         {
-            if (overrideStarted && capture is not null)
+            if (overrideAttempted && capture is not null)
             {
                 using var cleanupCancellationSource = new CancellationTokenSource();
                 if (cleanupTimeout == TimeSpan.Zero)
@@ -97,8 +104,17 @@ public sealed class ValidationScenarioRunner : IValidationScenarioRunner
     {
         foreach (var evidenceWriter in evidenceWriters)
         {
-            var evidence = await evidenceWriter.WriteAsync(report, context, CancellationToken.None);
-            report = report.WithEvidence(evidence);
+            try
+            {
+                var evidence = await evidenceWriter.WriteAsync(report, context, CancellationToken.None);
+                report = report.WithEvidence(evidence);
+            }
+            catch (Exception)
+            {
+                report = report
+                    .WithEvidence(EvidenceWriteResult.Failed(evidenceWriter.Kind))
+                    .MarkExportFailure();
+            }
         }
 
         return report;

@@ -4,11 +4,14 @@ using ReValidation.Common.Models;
 
 namespace ReValidation.Common.UI;
 
-public sealed class ValidationWindowController
+public sealed class ValidationWindowController : IDisposable
 {
     private readonly ValidationScenarioRegistry registry;
     private readonly IValidationScenarioRunner runner;
     private readonly IScenarioExecutionContextFactory contextFactory;
+    private readonly CancellationTokenSource lifetimeCancellationSource = new();
+    private readonly SemaphoreSlim runGate = new(1, 1);
+    private int disposed;
 
     public ValidationWindowController(
         ValidationWindowState state,
@@ -31,12 +34,19 @@ public sealed class ValidationWindowController
 
     public async Task RunSelectedScenarioAsync(CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+        if (!runGate.Wait(0))
+            return;
+
         State.SetRunning();
         try
         {
+            using var runCancellationSource = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                lifetimeCancellationSource.Token);
             var scenario = registry.GetRequired(State.SelectedScenarioId!);
             var context = contextFactory.Create(State.SelectedRoute, State.SelectedMode);
-            var report = await runner.RunAsync(scenario, context, cancellationToken);
+            var report = await runner.RunAsync(scenario, context, runCancellationSource.Token);
             State.SetCompleted(report.IsSuccess ? "Passed" : "Failed", report.ArtifactPaths);
         }
         catch (OperationCanceledException)
@@ -47,6 +57,16 @@ public sealed class ValidationWindowController
         {
             State.SetCompleted("Failed", Array.Empty<string>());
         }
+        finally
+        {
+            runGate.Release();
+        }
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref disposed, 1) == 0)
+            lifetimeCancellationSource.Cancel();
     }
 }
 

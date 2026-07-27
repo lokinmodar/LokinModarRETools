@@ -17,6 +17,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly WindowSystem windowSystem;
     private readonly ValidationWindow window;
     private readonly PluginCommandRegistrar commandRegistrar;
+    private readonly ValidationWindowController controller;
 
     public Plugin(IDalamudPluginInterface pluginInterface, ICommandManager commandManager)
     {
@@ -25,7 +26,7 @@ public sealed class Plugin : IDalamudPlugin
 
         this.pluginInterface = pluginInterface;
         windowSystem = new WindowSystem("ReValidation.OwnerSignatures");
-        var controller = BuildController(pluginInterface);
+        controller = BuildController(pluginInterface);
         window = new ValidationWindow(controller);
         commandRegistrar = new PluginCommandRegistrar(commandManager, window);
         windowSystem.AddWindow(window);
@@ -40,6 +41,7 @@ public sealed class Plugin : IDalamudPlugin
         pluginInterface.UiBuilder.Draw -= Draw;
         pluginInterface.UiBuilder.OpenConfigUi -= OpenWindow;
         commandRegistrar.Dispose();
+        controller.Dispose();
         windowSystem.RemoveAllWindows();
     }
 

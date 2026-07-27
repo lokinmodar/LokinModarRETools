@@ -14,13 +14,29 @@ public interface ITooltipProbe
     ValueTask<ScenarioRestoreResult> RestoreAsync(CancellationToken cancellationToken);
 }
 
+public interface ITooltipComparisonSource
+{
+    /// <summary>
+    /// Captures the independent route snapshot used as comparison proof.
+    /// </summary>
+    ValueTask<TooltipSnapshot> CaptureReferenceAsync(CancellationToken cancellationToken);
+}
+
 public abstract class TooltipValidationScenarioBase : IValidationScenario
 {
     protected const string Sentinel = "[REVALIDATION] Tooltip Sentinel";
     private readonly ITooltipProbe probe;
+    private readonly ITooltipComparisonSource? comparisonSource;
     private readonly string detailKind;
+    private readonly string? runtimeBlockingReason;
+    private TooltipSnapshot? capturedSnapshot;
 
-    protected TooltipValidationScenarioBase(ITooltipProbe probe, ValidationScenarioDefinition definition, string detailKind)
+    protected TooltipValidationScenarioBase(
+        ITooltipProbe probe,
+        ValidationScenarioDefinition definition,
+        string detailKind,
+        ITooltipComparisonSource? comparisonSource = null,
+        string? runtimeBlockingReason = null)
     {
         ArgumentNullException.ThrowIfNull(probe);
         ArgumentNullException.ThrowIfNull(definition);
@@ -28,6 +44,8 @@ public abstract class TooltipValidationScenarioBase : IValidationScenario
 
         this.probe = probe;
         this.detailKind = detailKind;
+        this.comparisonSource = comparisonSource;
+        this.runtimeBlockingReason = runtimeBlockingReason;
         Definition = definition;
     }
 
@@ -35,12 +53,29 @@ public abstract class TooltipValidationScenarioBase : IValidationScenario
 
     public abstract ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken);
 
+    protected ScenarioPreconditionResult? GetRuntimePreconditionFailure()
+    {
+        if (!string.IsNullOrWhiteSpace(runtimeBlockingReason))
+            return new ScenarioPreconditionResult(false, runtimeBlockingReason);
+
+        return null;
+    }
+
+    protected ScenarioPreconditionResult? GetComparisonPreconditionFailure(ScenarioExecutionContext context)
+    {
+        if (context.Mode is ValidationMode.Compare or ValidationMode.FullProof && comparisonSource is null)
+            return new ScenarioPreconditionResult(false, "Tooltip comparison reference source is required.");
+
+        return null;
+    }
+
     public async ValueTask<ScenarioCapture> CaptureAsync(ScenarioExecutionContext context, CancellationToken cancellationToken)
     {
         var snapshot = await probe.CaptureAsync(cancellationToken);
         if (!string.Equals(snapshot.DetailKind, detailKind, StringComparison.Ordinal))
             throw new InvalidOperationException($"Tooltip detail kind mismatch: expected '{detailKind}' but probe captured '{snapshot.DetailKind}'.");
 
+        capturedSnapshot = snapshot;
         return new ScenarioCapture(
             $"{detailKind} tooltip captured",
             new JsonObject
@@ -50,8 +85,17 @@ public abstract class TooltipValidationScenarioBase : IValidationScenario
             });
     }
 
-    public ValueTask<ScenarioCompareResult?> CompareAsync(ScenarioExecutionContext context, ScenarioCapture capture, CancellationToken cancellationToken) =>
-        ValueTask.FromResult<ScenarioCompareResult?>(null);
+    public async ValueTask<ScenarioCompareResult?> CompareAsync(
+        ScenarioExecutionContext context,
+        ScenarioCapture capture,
+        CancellationToken cancellationToken)
+    {
+        if (capturedSnapshot is null || comparisonSource is null)
+            return new ScenarioCompareResult(false, "Tooltip comparison reference unavailable", ["A typed comparison reference is required."]);
+
+        var reference = await comparisonSource.CaptureReferenceAsync(cancellationToken);
+        return TooltipComparer.Compare(capturedSnapshot, reference);
+    }
 
     public ValueTask<ScenarioOverrideTicket?> OverrideAsync(ScenarioExecutionContext context, ScenarioCapture capture, CancellationToken cancellationToken) =>
         probe.ApplySentinelOverrideAsync(Sentinel, cancellationToken);

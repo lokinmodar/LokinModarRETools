@@ -14,7 +14,9 @@ public sealed class TooltipItemDetailOwnerScenario : TooltipValidationScenarioBa
         ITooltipProbe probe,
         IEnumerable<SignatureRequirement>? requirements = null,
         IEnumerable<SignatureResolution>? resolutions = null,
-        SignatureGate? signatureGate = null)
+        SignatureGate? signatureGate = null,
+        ITooltipComparisonSource? comparisonSource = null,
+        string? runtimeBlockingReason = null)
         : base(
             probe,
             new ValidationScenarioDefinition(
@@ -22,13 +24,27 @@ public sealed class TooltipItemDetailOwnerScenario : TooltipValidationScenarioBa
                 "Tooltip Item Detail",
                 "Open an item tooltip.",
                 [ValidationRoute.OwnerSignatures]),
-            "item")
+            "item",
+            comparisonSource,
+            runtimeBlockingReason)
     {
         this.requirements = requirements?.ToArray() ?? [];
         this.resolutions = resolutions?.ToArray() ?? [];
         this.signatureGate = signatureGate ?? new SignatureGate();
     }
 
-    public override ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken) =>
-        TooltipOwnerScenarioValidation.Validate(requirements, resolutions, signatureGate);
+    public override ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken)
+    {
+        var runtimeFailure = GetRuntimePreconditionFailure();
+        if (runtimeFailure is not null)
+            return ValueTask.FromResult(runtimeFailure);
+
+        var routeValidation = TooltipOwnerScenarioValidation.Validate(requirements, resolutions, signatureGate);
+        if (!routeValidation.CanRun)
+            return ValueTask.FromResult(routeValidation);
+
+        return ValueTask.FromResult(
+            GetComparisonPreconditionFailure(context)
+            ?? routeValidation);
+    }
 }

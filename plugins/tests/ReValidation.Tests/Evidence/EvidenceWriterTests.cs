@@ -64,8 +64,56 @@ public sealed class EvidenceWriterTests
 
         Assert.DoesNotContain(secret, payload, StringComparison.Ordinal);
         Assert.DoesNotContain("metadata-secret", payload, StringComparison.Ordinal);
-        Assert.DoesNotContain("Capture", payload, StringComparison.Ordinal);
-        Assert.DoesNotContain("Metadata", payload, StringComparison.Ordinal);
+        Assert.DoesNotContain(secret, payload, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"secret\"", payload, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Writers_ExportSanitizedRouteMetadataAndPhaseProof()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var report = ScenarioRunReport.Started(
+                new ValidationScenarioDefinition("tooltip.item-detail", "Tooltip item detail"),
+                ValidationRoute.OwnerSignatures,
+                ValidationMode.FullProof)
+            .WithRouteMetadata(new Dictionary<string, string?>
+            {
+                ["signature:itemTooltip"] = "matchCount=1;rva=0x1234",
+                ["notAllowlisted"] = "must-not-export",
+            })
+            .WithPrecondition(new ScenarioPreconditionResult(true, null))
+            .WithCapture(new ScenarioCapture(
+                "item tooltip captured",
+                new JsonObject
+                {
+                    ["detailKind"] = "item",
+                    ["resolvedId"] = 5333,
+                    ["rawPayload"] = "must-not-export",
+                }))
+            .WithCompare(new ScenarioCompareResult(true, "item tooltip compared", []))
+            .WithOverride(new ScenarioOverrideTicket("sentinel applied", new JsonObject { ["raw"] = "must-not-export" }))
+            .WithAssert(new ScenarioAssertResult(true, "sentinel visible", []))
+            .WithRestore(new ScenarioRestoreResult(true, "tooltip restored", []))
+            .MarkSuccess();
+        var context = ScenarioExecutionContext.CreateForTests(
+            ValidationRoute.OwnerSignatures,
+            ValidationMode.FullProof,
+            root);
+
+        var json = await new JsonEvidenceWriter(new EvidencePathBuilder()).WriteAsync(report, context, CancellationToken.None);
+        var markdown = await new MarkdownEvidenceWriter(new EvidencePathBuilder()).WriteAsync(report, context, CancellationToken.None);
+        var jsonPayload = await File.ReadAllTextAsync(json.OutputPath);
+        var markdownPayload = await File.ReadAllTextAsync(markdown.OutputPath);
+
+        Assert.Contains("signature:itemTooltip", jsonPayload, StringComparison.Ordinal);
+        Assert.Contains("\"IsMatch\": true", jsonPayload, StringComparison.Ordinal);
+        Assert.Contains("\"RestorePassed\": true", jsonPayload, StringComparison.Ordinal);
+        Assert.Contains("\"resolvedId\": 5333", jsonPayload, StringComparison.Ordinal);
+        Assert.Contains("## Proof", markdownPayload, StringComparison.Ordinal);
+        Assert.Contains("Comparison match: `True`", markdownPayload, StringComparison.Ordinal);
+        Assert.Contains("signature:itemTooltip", markdownPayload, StringComparison.Ordinal);
+        Assert.DoesNotContain("must-not-export", jsonPayload, StringComparison.Ordinal);
+        Assert.DoesNotContain("must-not-export", markdownPayload, StringComparison.Ordinal);
     }
 
     [Fact]

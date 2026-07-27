@@ -1,6 +1,7 @@
 using ReValidation.Common.Execution;
 using ReValidation.Common.Models;
 using ReValidation.Common.Scenarios;
+using ReValidation.LocalClientStructs.Scenarios;
 
 namespace ReValidation.LocalClientStructs;
 
@@ -11,11 +12,32 @@ public static class LocalClientStructsScenarioComposition
     public static ValidationScenarioRegistry CreateRegistry() =>
         new(
         [
-            CreateScenario("journal.completed-entries", "Journal Completed Entries", "Open the completed Journal list."),
-            CreateScenario("tooltip.item-detail", "Tooltip Item Detail", "Open an item tooltip."),
-            CreateScenario("tooltip.action-detail", "Tooltip Action Detail", "Open an action tooltip."),
+            new JournalCompletedEntriesLocalScenario(
+                new UnavailableJournalProbe(),
+                runtimeBlockingReason: BlockingReason),
+            new TooltipItemDetailLocalScenario(
+                new UnavailableTooltipProbe(),
+                runtimeBlockingReason: BlockingReason),
+            new TooltipActionDetailLocalScenario(
+                new UnavailableTooltipProbe(),
+                runtimeBlockingReason: BlockingReason),
         ]);
 
-    private static NotConfiguredValidationScenario CreateScenario(string id, string name, string description) =>
-        new(new ValidationScenarioDefinition(id, name, description, [ValidationRoute.LocalClientStructs]), BlockingReason);
+    private sealed class UnavailableJournalProbe : IJournalCompletedEntriesProbe
+    {
+        public ValueTask<JournalCompletedEntriesSnapshot> CaptureAsync(CancellationToken cancellationToken) => throw Unavailable();
+        public ValueTask<ScenarioOverrideTicket?> ApplySentinelOverrideAsync(string sentinel, CancellationToken cancellationToken) => throw Unavailable();
+        public ValueTask<ScenarioAssertResult?> AssertSentinelAsync(string sentinel, CancellationToken cancellationToken) => throw Unavailable();
+        public ValueTask<ScenarioRestoreResult> RestoreAsync(CancellationToken cancellationToken) => throw Unavailable();
+    }
+
+    private sealed class UnavailableTooltipProbe : ITooltipProbe
+    {
+        public ValueTask<TooltipSnapshot> CaptureAsync(CancellationToken cancellationToken) => throw Unavailable();
+        public ValueTask<ScenarioOverrideTicket?> ApplySentinelOverrideAsync(string sentinel, CancellationToken cancellationToken) => throw Unavailable();
+        public ValueTask<ScenarioAssertResult?> AssertSentinelAsync(string sentinel, CancellationToken cancellationToken) => throw Unavailable();
+        public ValueTask<ScenarioRestoreResult> RestoreAsync(CancellationToken cancellationToken) => throw Unavailable();
+    }
+
+    private static InvalidOperationException Unavailable() => new(BlockingReason);
 }

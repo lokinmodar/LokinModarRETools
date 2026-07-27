@@ -138,6 +138,34 @@ public sealed class ValidationScenarioRunnerTests
         Assert.Equal("compare", report.FailedPhase);
     }
 
+    [Fact]
+    public async Task Compare_ReportsMissingComparisonAsFailure()
+    {
+        var scenario = new RecordingScenario(returnsNullCompare: true);
+        var runner = new ValidationScenarioRunner(new NullRouteMetadataProvider(), new NullEvidenceWriter());
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.Compare);
+
+        var report = await runner.RunAsync(scenario, context, CancellationToken.None);
+
+        Assert.False(report.IsSuccess);
+        Assert.Equal("compare", report.FailedPhase);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task FullProof_RestoresAfterOverrideAttemptEvenWithoutTicket(bool overrideThrows)
+    {
+        var scenario = new RecordingScenario(overrideThrows: overrideThrows, returnsNullOverride: !overrideThrows);
+        var runner = new ValidationScenarioRunner(new NullRouteMetadataProvider(), new NullEvidenceWriter());
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.FullProof);
+
+        var report = await runner.RunAsync(scenario, context, CancellationToken.None);
+
+        Assert.Contains("restore", scenario.Calls);
+        Assert.NotNull(report.RestoreResult);
+    }
+
     [Theory]
     [InlineData(ValidationMode.OverrideAssert)]
     [InlineData(ValidationMode.FullProof)]
@@ -169,6 +197,38 @@ public sealed class ValidationScenarioRunnerTests
     }
 
     [Fact]
+    public async Task Export_AttemptsEveryWriterAndReportsSanitizedFailure()
+    {
+        var failed = new ThrowingEvidenceWriter("json", "sensitive writer detail");
+        var markdown = new RecordingEvidenceWriter("markdown", "report.md");
+        var runner = new ValidationScenarioRunner(new NullRouteMetadataProvider(), failed, markdown);
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.CaptureOnly);
+
+        var report = await runner.RunAsync(new RecordingScenario(), context, CancellationToken.None);
+
+        Assert.Equal(1, failed.WriteCount);
+        Assert.Equal(1, markdown.WriteCount);
+        Assert.False(report.IsSuccess);
+        Assert.Equal("export", report.FailedPhase);
+        var failure = Assert.Single(report.Evidence, evidence => !evidence.IsSuccess);
+        Assert.Equal("json", failure.Kind);
+        Assert.DoesNotContain("sensitive", failure.FailureReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Run_RecordsMetadataFromConfiguredRouteProvider()
+    {
+        var provider = new RecordingRouteMetadataProvider();
+        var runner = new ValidationScenarioRunner(provider, new NullEvidenceWriter());
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.CaptureOnly);
+
+        var report = await runner.RunAsync(new RecordingScenario(), context, CancellationToken.None);
+
+        Assert.Equal(1, provider.CallCount);
+        Assert.Equal("matchCount=1;rva=0x1234", report.RouteMetadata["signature:journal"]);
+    }
+
+    [Fact]
     public async Task FullProof_ExportsEvidenceAfterCallerCancellation()
     {
         using var cancellationSource = new CancellationTokenSource();
@@ -187,6 +247,9 @@ public sealed class ValidationScenarioRunnerTests
     {
         private readonly bool assertThrows;
         private readonly bool compareMatches;
+        private readonly bool returnsNullCompare;
+        private readonly bool overrideThrows;
+        private readonly bool returnsNullOverride;
         private readonly bool returnsNullAssert;
         private readonly Action? assertAction;
         private readonly Func<CancellationToken, ScenarioRestoreResult>? restore;
@@ -197,6 +260,9 @@ public sealed class ValidationScenarioRunnerTests
         public RecordingScenario(
             bool assertThrows = false,
             bool compareMatches = true,
+            bool returnsNullCompare = false,
+            bool overrideThrows = false,
+            bool returnsNullOverride = false,
             bool returnsNullAssert = false,
             Action? assertAction = null,
             Func<CancellationToken, ScenarioRestoreResult>? restore = null,
@@ -204,6 +270,9 @@ public sealed class ValidationScenarioRunnerTests
         {
             this.assertThrows = assertThrows;
             this.compareMatches = compareMatches;
+            this.returnsNullCompare = returnsNullCompare;
+            this.overrideThrows = overrideThrows;
+            this.returnsNullOverride = returnsNullOverride;
             this.returnsNullAssert = returnsNullAssert;
             this.assertAction = assertAction;
             this.restore = restore;
@@ -229,12 +298,21 @@ public sealed class ValidationScenarioRunnerTests
         public ValueTask<ScenarioCompareResult?> CompareAsync(ScenarioExecutionContext context, ScenarioCapture capture, CancellationToken cancellationToken)
         {
             Calls.Add("compare");
+            if (returnsNullCompare)
+                return ValueTask.FromResult<ScenarioCompareResult?>(null);
+
             return ValueTask.FromResult<ScenarioCompareResult?>(new ScenarioCompareResult(compareMatches, "compare", []));
         }
 
         public ValueTask<ScenarioOverrideTicket?> OverrideAsync(ScenarioExecutionContext context, ScenarioCapture capture, CancellationToken cancellationToken)
         {
             Calls.Add("override");
+            if (overrideThrows)
+                throw new InvalidOperationException("override failed after mutation");
+
+            if (returnsNullOverride)
+                return ValueTask.FromResult<ScenarioOverrideTicket?>(null);
+
             return ValueTask.FromResult<ScenarioOverrideTicket?>(new ScenarioOverrideTicket("override", new JsonObject()));
         }
 
@@ -271,6 +349,8 @@ public sealed class ValidationScenarioRunnerTests
 
     private sealed class NullEvidenceWriter : IEvidenceWriter
     {
+        public string Kind => "null";
+
         public ValueTask<EvidenceWriteResult> WriteAsync(ScenarioRunReport report, ScenarioExecutionContext context, CancellationToken cancellationToken)
         {
             RecordingScenario.Current!.Calls.Add("export");
@@ -281,6 +361,7 @@ public sealed class ValidationScenarioRunnerTests
     private sealed class RecordingEvidenceWriter(string kind, string outputPath, bool requireActiveToken = false) : IEvidenceWriter
     {
         public int WriteCount { get; private set; }
+        public string Kind => kind;
 
         public ValueTask<EvidenceWriteResult> WriteAsync(ScenarioRunReport report, ScenarioExecutionContext context, CancellationToken cancellationToken)
         {
@@ -289,6 +370,31 @@ public sealed class ValidationScenarioRunnerTests
 
             WriteCount++;
             return ValueTask.FromResult(new EvidenceWriteResult(kind, outputPath));
+        }
+    }
+
+    private sealed class ThrowingEvidenceWriter(string kind, string message) : IEvidenceWriter
+    {
+        public int WriteCount { get; private set; }
+        public string Kind => kind;
+
+        public ValueTask<EvidenceWriteResult> WriteAsync(ScenarioRunReport report, ScenarioExecutionContext context, CancellationToken cancellationToken)
+        {
+            WriteCount++;
+            throw new InvalidOperationException(message);
+        }
+    }
+
+    private sealed class RecordingRouteMetadataProvider : IRouteMetadataProvider
+    {
+        public int CallCount { get; private set; }
+        public ValidationRoute Route => ValidationRoute.OwnerSignatures;
+
+        public ValueTask<IReadOnlyDictionary<string, string?>> GetMetadataAsync(CancellationToken cancellationToken)
+        {
+            CallCount++;
+            return ValueTask.FromResult<IReadOnlyDictionary<string, string?>>(
+                new Dictionary<string, string?> { ["signature:journal"] = "matchCount=1;rva=0x1234" });
         }
     }
 }

@@ -21,8 +21,13 @@ public sealed record ScenarioRunReport(
     public bool CanRun => Precondition?.CanRun ?? false;
     public DateTimeOffset Timestamp { get; } = DateTimeOffset.UtcNow;
     public string EvidenceRunId { get; } = Guid.NewGuid().ToString("N");
+    public IReadOnlyDictionary<string, string?> RouteMetadata { get; init; } = new Dictionary<string, string?>();
+    public bool OverrideAttempted { get; init; }
     public ValidationScenarioDefinition Scenario => Definition;
-    public IReadOnlyList<string> ArtifactPaths => Evidence.Select(evidence => evidence.OutputPath).ToArray();
+    public IReadOnlyList<string> ArtifactPaths => Evidence
+        .Where(evidence => evidence.IsSuccess && !string.IsNullOrWhiteSpace(evidence.OutputPath))
+        .Select(evidence => evidence.OutputPath)
+        .ToArray();
     public string Status => IsSuccess ? "success" : FailedPhase is null ? "incomplete" : "failed";
     public string Summary => Exception?.Message
         ?? AssertResult?.Summary
@@ -37,6 +42,13 @@ public sealed record ScenarioRunReport(
     public static ScenarioRunReport CreateForTests(string scenarioId, ValidationRoute route, ValidationMode mode) =>
         Started(new ValidationScenarioDefinition(scenarioId, scenarioId), route, mode).MarkSuccess();
 
+    public ScenarioRunReport WithRouteMetadata(IReadOnlyDictionary<string, string?> routeMetadata) =>
+        this with
+        {
+            RouteMetadata = new Dictionary<string, string?>(routeMetadata, StringComparer.Ordinal),
+            CurrentPhase = "validate",
+        };
+
     public ScenarioRunReport WithPrecondition(ScenarioPreconditionResult precondition) =>
         this with { Precondition = precondition, CurrentPhase = "capture" };
 
@@ -48,6 +60,9 @@ public sealed record ScenarioRunReport(
 
     public ScenarioRunReport WithOverride(ScenarioOverrideTicket? ticket) =>
         this with { OverrideResult = ticket, CurrentPhase = "assert" };
+
+    public ScenarioRunReport MarkOverrideAttempted() =>
+        this with { OverrideAttempted = true, CurrentPhase = "override" };
 
     public ScenarioRunReport WithAssert(ScenarioAssertResult? assert) =>
         this with { AssertResult = assert, CurrentPhase = "restore" };
@@ -65,7 +80,7 @@ public sealed record ScenarioRunReport(
         this with { IsSuccess = true, CurrentPhase = "export" };
 
     public ScenarioRunReport MarkFromCompare(ScenarioCompareResult? compare) =>
-        compare is null || compare.IsMatch
+        compare is { IsMatch: true }
             ? this
             : this with { IsSuccess = false, FailedPhase = "compare", CurrentPhase = "override" };
 
@@ -76,6 +91,9 @@ public sealed record ScenarioRunReport(
 
     public ScenarioRunReport MarkFailure(string phase, Exception exception) =>
         this with { IsSuccess = false, FailedPhase = phase, CurrentPhase = "restore", Exception = exception };
+
+    public ScenarioRunReport MarkExportFailure() =>
+        this with { IsSuccess = false, FailedPhase = FailedPhase ?? "export", CurrentPhase = "export" };
 
     public ScenarioRunReport MergeRestoreOutcome(ScenarioRestoreResult restore) =>
         restore.Passed || !IsSuccess

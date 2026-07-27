@@ -49,6 +49,37 @@ public sealed class ValidationWindowControllerTests
         Assert.Empty(controller.State.ArtifactPaths);
     }
 
+    [Fact]
+    public async Task RunSelectedScenario_AllowsOnlyOneActiveRun()
+    {
+        var runner = new BlockingRunner();
+        using var controller = CreateController(runner);
+
+        var firstRun = controller.RunSelectedScenarioAsync(CancellationToken.None);
+        await runner.Started.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await controller.RunSelectedScenarioAsync(CancellationToken.None);
+
+        Assert.Equal(1, runner.RunCount);
+
+        runner.Complete();
+        await firstRun;
+    }
+
+    [Fact]
+    public async Task Dispose_CancelsActiveRun()
+    {
+        var runner = new BlockingRunner();
+        var controller = CreateController(runner);
+        var run = controller.RunSelectedScenarioAsync(CancellationToken.None);
+        await runner.Started.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        controller.Dispose();
+        await run.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.True(runner.ObservedCancellation);
+        Assert.Equal("Cancelled", controller.State.StatusText);
+    }
+
     private static ValidationWindowController CreateController(IValidationScenarioRunner runner)
     {
         var controller = new ValidationWindowController(
@@ -66,6 +97,33 @@ public sealed class ValidationWindowControllerTests
                 ScenarioRunReport.CreateForTests(scenario.Definition.Id, context.Route, context.Mode)
                     .WithEvidence(new EvidenceWriteResult("json", "evidence.json"))
                     .WithEvidence(new EvidenceWriteResult("markdown", "evidence.md")));
+    }
+
+    private sealed class BlockingRunner : IValidationScenarioRunner
+    {
+        private readonly TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int RunCount { get; private set; }
+        public bool ObservedCancellation { get; private set; }
+
+        public async Task<ScenarioRunReport> RunAsync(IValidationScenario scenario, ScenarioExecutionContext context, CancellationToken cancellationToken)
+        {
+            RunCount++;
+            Started.TrySetResult();
+            try
+            {
+                await completion.Task.WaitAsync(cancellationToken);
+                return ScenarioRunReport.CreateForTests(scenario.Definition.Id, context.Route, context.Mode);
+            }
+            catch (OperationCanceledException)
+            {
+                ObservedCancellation = true;
+                throw;
+            }
+        }
+
+        public void Complete() => completion.TrySetResult();
     }
 
     private sealed class ThrowingRunner : IValidationScenarioRunner

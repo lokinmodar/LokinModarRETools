@@ -66,10 +66,11 @@ public sealed class TooltipScenarioTests
         var scenario = new TooltipActionDetailOwnerScenario(
             probe,
             [new SignatureRequirement("actionTooltip", "48 89 ?? ??", mustBeUnique: true)],
-            [new SignatureResolution("actionTooltip", matchCount: 1, rva: 0x1234, failureReason: null)]);
+            [new SignatureResolution("actionTooltip", matchCount: 1, rva: 0x1234, failureReason: null)],
+            comparisonSource: new FakeTooltipComparisonSource("action", "Sprint"));
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.FullProof);
 
-        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(), new NullEvidenceWriter())
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
             .RunAsync(scenario, context, CancellationToken.None);
 
         Assert.True(report.IsSuccess);
@@ -83,7 +84,7 @@ public sealed class TooltipScenarioTests
         var scenario = new TooltipItemDetailLocalScenario(new FakeTooltipProbe("item", "Potion"));
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.LocalClientStructs, ValidationMode.FullProof);
 
-        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(), new NullEvidenceWriter())
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
             .RunAsync(scenario, context, CancellationToken.None);
 
         Assert.False(report.IsSuccess);
@@ -96,11 +97,29 @@ public sealed class TooltipScenarioTests
         var scenario = new TooltipItemDetailOwnerScenario(new FakeTooltipProbe("item", "Potion"));
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.FullProof);
 
-        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(), new NullEvidenceWriter())
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
             .RunAsync(scenario, context, CancellationToken.None);
 
         Assert.False(report.IsSuccess);
         Assert.Equal("Tooltip signature requirements are required.", report.Precondition!.BlockingReason);
+    }
+
+    [Fact]
+    public async Task Compare_UsesReferenceSourceAndReportsMismatch()
+    {
+        var scenario = new TooltipItemDetailOwnerScenario(
+            new FakeTooltipProbe("item", "Potion"),
+            [new SignatureRequirement("itemTooltip", "48 89 ?? ??", mustBeUnique: true)],
+            [new SignatureResolution("itemTooltip", matchCount: 1, rva: 0x1234, failureReason: null)],
+            comparisonSource: new FakeTooltipComparisonSource("item", "Ether"));
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.Compare);
+
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
+            .RunAsync(scenario, context, CancellationToken.None);
+
+        Assert.False(report.IsSuccess);
+        Assert.Equal("compare", report.FailedPhase);
+        Assert.Contains(report.CompareResult!.Differences, difference => difference.Contains("Potion", StringComparison.Ordinal));
     }
 
     private sealed class FakeTooltipProbe(string detailKind, string visibleText) : ITooltipProbe
@@ -132,9 +151,15 @@ public sealed class TooltipScenarioTests
         }
     }
 
-    private sealed class NullRouteMetadataProvider : IRouteMetadataProvider
+    private sealed class FakeTooltipComparisonSource(string detailKind, string visibleText) : ITooltipComparisonSource
     {
-        public ValidationRoute Route => ValidationRoute.LocalClientStructs;
+        public ValueTask<TooltipSnapshot> CaptureReferenceAsync(CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new TooltipSnapshot(detailKind, 5333, [visibleText], visibleText));
+    }
+
+    private sealed class NullRouteMetadataProvider(ValidationRoute route) : IRouteMetadataProvider
+    {
+        public ValidationRoute Route => route;
 
         public ValueTask<IReadOnlyDictionary<string, string?>> GetMetadataAsync(CancellationToken cancellationToken) =>
             ValueTask.FromResult<IReadOnlyDictionary<string, string?>>(new Dictionary<string, string?>());
@@ -142,6 +167,8 @@ public sealed class TooltipScenarioTests
 
     private sealed class NullEvidenceWriter : IEvidenceWriter
     {
+        public string Kind => "null";
+
         public ValueTask<EvidenceWriteResult> WriteAsync(ScenarioRunReport report, ScenarioExecutionContext context, CancellationToken cancellationToken) =>
             ValueTask.FromResult(new EvidenceWriteResult("null", string.Empty));
     }

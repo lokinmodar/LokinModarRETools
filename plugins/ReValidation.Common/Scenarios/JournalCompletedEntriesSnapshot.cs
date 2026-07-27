@@ -13,3 +13,11 @@ public interface IJournalCompletedEntriesProbe
     ValueTask<ScenarioAssertResult?> AssertSentinelAsync(string sentinel, CancellationToken cancellationToken);
     ValueTask<ScenarioRestoreResult> RestoreAsync(CancellationToken cancellationToken);
 }
+
+public interface IJournalCompletedEntriesComparisonSource
+{
+    /// <summary>
+    /// Captures the independent route snapshot used as comparison proof.
+    /// </summary>
+    ValueTask<JournalCompletedEntriesSnapshot> CaptureReferenceAsync(CancellationToken cancellationToken);
+}

@@ -14,7 +14,9 @@ public sealed class TooltipActionDetailOwnerScenario : TooltipValidationScenario
         ITooltipProbe probe,
         IEnumerable<SignatureRequirement>? requirements = null,
         IEnumerable<SignatureResolution>? resolutions = null,
-        SignatureGate? signatureGate = null)
+        SignatureGate? signatureGate = null,
+        ITooltipComparisonSource? comparisonSource = null,
+        string? runtimeBlockingReason = null)
         : base(
             probe,
             new ValidationScenarioDefinition(
@@ -22,34 +24,48 @@ public sealed class TooltipActionDetailOwnerScenario : TooltipValidationScenario
                 "Tooltip Action Detail",
                 "Open an action tooltip.",
                 [ValidationRoute.OwnerSignatures]),
-            "action")
+            "action",
+            comparisonSource,
+            runtimeBlockingReason)
     {
         this.requirements = requirements?.ToArray() ?? [];
         this.resolutions = resolutions?.ToArray() ?? [];
         this.signatureGate = signatureGate ?? new SignatureGate();
     }
 
-    public override ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken) =>
-        TooltipOwnerScenarioValidation.Validate(requirements, resolutions, signatureGate);
+    public override ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken)
+    {
+        var runtimeFailure = GetRuntimePreconditionFailure();
+        if (runtimeFailure is not null)
+            return ValueTask.FromResult(runtimeFailure);
+
+        var routeValidation = TooltipOwnerScenarioValidation.Validate(requirements, resolutions, signatureGate);
+        if (!routeValidation.CanRun)
+            return ValueTask.FromResult(routeValidation);
+
+        return ValueTask.FromResult(
+            GetComparisonPreconditionFailure(context)
+            ?? routeValidation);
+    }
 }
 
 internal static class TooltipOwnerScenarioValidation
 {
-    public static ValueTask<ScenarioPreconditionResult> Validate(
+    public static ScenarioPreconditionResult Validate(
         IReadOnlyList<SignatureRequirement> requirements,
         IReadOnlyList<SignatureResolution> resolutions,
         SignatureGate signatureGate)
     {
         if (requirements.Count == 0)
-            return ValueTask.FromResult(new ScenarioPreconditionResult(false, "Tooltip signature requirements are required."));
+            return new ScenarioPreconditionResult(false, "Tooltip signature requirements are required.");
 
         if (resolutions.Count == 0)
-            return ValueTask.FromResult(new ScenarioPreconditionResult(false, "Tooltip signature resolutions are required."));
+            return new ScenarioPreconditionResult(false, "Tooltip signature resolutions are required.");
 
         var result = signatureGate.Evaluate(requirements, resolutions);
         var reason = result.CanRun
             ? null
             : $"Signature requirement '{result.FailingRequirementId}' is blocked: {result.FailureReason}.";
-        return ValueTask.FromResult(new ScenarioPreconditionResult(result.CanRun, reason));
+        return new ScenarioPreconditionResult(result.CanRun, reason);
     }
 }
