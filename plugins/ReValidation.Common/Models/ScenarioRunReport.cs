@@ -50,10 +50,15 @@ public sealed record ScenarioRunReport(
     public ScenarioRunReport MarkSuccess() =>
         this with { IsSuccess = true, CurrentPhase = "export" };
 
+    public ScenarioRunReport MarkFromCompare(ScenarioCompareResult? compare) =>
+        compare is null || compare.IsMatch
+            ? this
+            : this with { IsSuccess = false, FailedPhase = "compare", CurrentPhase = "override" };
+
     public ScenarioRunReport MarkFromAssert(ScenarioAssertResult? assert) =>
-        assert is null || assert.Passed
+        assert is { Passed: true } && FailedPhase is null
             ? MarkSuccess()
-            : this with { IsSuccess = false, FailedPhase = "assert", CurrentPhase = "restore" };
+            : this with { IsSuccess = false, FailedPhase = FailedPhase ?? "assert", CurrentPhase = "restore" };
 
     public ScenarioRunReport MarkFailure(string phase, Exception exception) =>
         this with { IsSuccess = false, FailedPhase = phase, CurrentPhase = "restore", Exception = exception };
