@@ -19,9 +19,21 @@ public sealed record ScenarioRunReport(
     Exception? Exception)
 {
     public bool CanRun => Precondition?.CanRun ?? false;
+    public DateTimeOffset Timestamp { get; } = DateTimeOffset.UtcNow;
+    public ValidationScenarioDefinition Scenario => Definition;
+    public string Status => IsSuccess ? "success" : FailedPhase is null ? "incomplete" : "failed";
+    public string Summary => Exception?.Message
+        ?? AssertResult?.Summary
+        ?? CompareResult?.Summary
+        ?? Capture?.Summary
+        ?? Precondition?.BlockingReason
+        ?? Status;
 
     public static ScenarioRunReport Started(ValidationScenarioDefinition definition, ValidationRoute route, ValidationMode mode) =>
         new(definition, route, mode, null, null, null, null, null, null, [], false, null, "validate", null);
+
+    public static ScenarioRunReport CreateForTests(string scenarioId, ValidationRoute route, ValidationMode mode) =>
+        Started(new ValidationScenarioDefinition(scenarioId, scenarioId), route, mode).MarkSuccess();
 
     public ScenarioRunReport WithPrecondition(ScenarioPreconditionResult precondition) =>
         this with { Precondition = precondition, CurrentPhase = "capture" };
