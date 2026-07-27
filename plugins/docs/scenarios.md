@@ -14,3 +14,11 @@ entry text and quest keys remain in the in-memory Journal snapshot used for comp
 applies `[REVALIDATION] Journal Sentinel`, verifies it, and restores the original Journal text.
 The local route blocks full proof when local ClientStructs is unavailable. The owner-signature route
 blocks when any scenario-required signature is unresolved or non-unique.
+
+## Tooltip.ItemDetail and Tooltip.ActionDetail
+
+Open an item or action tooltip. Both routes capture only the fixed detail kind and resolved ID for
+evidence; payload lines and visible text remain in memory for tooltip comparison. Full proof applies
+`[REVALIDATION] Tooltip Sentinel`, verifies it, and restores the original visible text. The local
+route blocks full proof when local ClientStructs is unavailable. The owner-signature route blocks when
+any scenario-required signature is unresolved or non-unique.
