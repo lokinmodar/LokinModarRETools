@@ -109,11 +109,41 @@ public sealed class EvidenceWriterTests
         Assert.Contains("\"IsMatch\": true", jsonPayload, StringComparison.Ordinal);
         Assert.Contains("\"RestorePassed\": true", jsonPayload, StringComparison.Ordinal);
         Assert.Contains("\"resolvedId\": 5333", jsonPayload, StringComparison.Ordinal);
+        Assert.Contains("\"Summary\": \"sentinel visible\"", jsonPayload, StringComparison.Ordinal);
         Assert.Contains("## Proof", markdownPayload, StringComparison.Ordinal);
+        Assert.Contains("Reason: `sentinel visible`", markdownPayload, StringComparison.Ordinal);
         Assert.Contains("Comparison match: `True`", markdownPayload, StringComparison.Ordinal);
         Assert.Contains("signature:itemTooltip", markdownPayload, StringComparison.Ordinal);
         Assert.DoesNotContain("must-not-export", jsonPayload, StringComparison.Ordinal);
         Assert.DoesNotContain("must-not-export", markdownPayload, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Writers_SanitizeResolverExceptionSummary()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var report = ScenarioRunReport.Started(
+                new ValidationScenarioDefinition("journal.completed-entries", "Journal completed entries"),
+                ValidationRoute.LocalClientStructs,
+                ValidationMode.CaptureOnly)
+            .WithPrecondition(new ScenarioPreconditionResult(true, null))
+            .MarkFailure(
+                "capture",
+                new InvalidOperationException("Address for QuestManager.IsQuestComplete is null. The resolver was either uninitialized or failed to resolve address with signature E8 ?? ?? ?? ?? 41 88 84 2E."));
+        var context = ScenarioExecutionContext.CreateForTests(
+            ValidationRoute.LocalClientStructs,
+            ValidationMode.CaptureOnly,
+            root);
+
+        var json = await new JsonEvidenceWriter(new EvidencePathBuilder()).WriteAsync(report, context, CancellationToken.None);
+        var markdown = await new MarkdownEvidenceWriter(new EvidencePathBuilder()).WriteAsync(report, context, CancellationToken.None);
+        var jsonPayload = await File.ReadAllTextAsync(json.OutputPath);
+        var markdownPayload = await File.ReadAllTextAsync(markdown.OutputPath);
+
+        Assert.Contains("Required ClientStructs address was unresolved. The local interop resolver was uninitialized or failed to resolve.", jsonPayload, StringComparison.Ordinal);
+        Assert.DoesNotContain("E8 ?? ?? ?? ?? 41 88 84 2E", jsonPayload, StringComparison.Ordinal);
+        Assert.Contains("Reason: `Required ClientStructs address was unresolved. The local interop resolver was uninitialized or failed to resolve.`", markdownPayload, StringComparison.Ordinal);
+        Assert.DoesNotContain("E8 ?? ?? ?? ?? 41 88 84 2E", markdownPayload, StringComparison.Ordinal);
     }
 
     [Fact]

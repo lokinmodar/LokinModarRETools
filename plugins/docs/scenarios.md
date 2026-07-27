@@ -7,8 +7,9 @@ resolves to anything other than exactly one match.
 Evidence metadata exposes only `signature:<id>` values containing the match count and, when
 available, the RVA. Signature patterns and resolver failure details are not exported.
 JSON and Markdown artifacts include phase outcomes, comparison difference counts, override/restore
-outcomes, and scenario-specific allowlisted capture metrics. Raw Journal text, tooltip payload lines,
-visible text, arbitrary context metadata, exception messages, and writer exception details are not exported.
+outcomes, a sanitized verdict summary, and scenario-specific allowlisted capture metrics. Raw Journal
+text, tooltip payload lines, visible text, arbitrary context metadata, raw exception messages, and
+writer exception details are not exported.
 
 ## Journal.CompletedEntries
 

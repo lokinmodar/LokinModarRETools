@@ -19,6 +19,9 @@ public sealed class MarkdownEvidenceWriter(EvidencePathBuilder paths) : IEvidenc
         var exportFailures = evidence.ExportFailures.Count == 0
             ? "- None"
             : string.Join(Environment.NewLine, evidence.ExportFailures.Select(failure => $"- `{failure.Kind}`: {failure.FailureReason}"));
+        var summaryLine = string.IsNullOrWhiteSpace(evidence.Summary)
+            ? string.Empty
+            : $"{Environment.NewLine}Reason: `{evidence.Summary}`";
         var markdown = $$"""
         # {{evidence.ScenarioName}}
 
@@ -30,7 +33,7 @@ public sealed class MarkdownEvidenceWriter(EvidencePathBuilder paths) : IEvidenc
 
         ## Verdict
 
-        Run completed with status: `{{evidence.Status}}`.
+        Run completed with status: `{{evidence.Status}}`.{{summaryLine}}
 
         ## Proof
 

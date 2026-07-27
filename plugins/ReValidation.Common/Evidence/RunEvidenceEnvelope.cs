@@ -12,6 +12,7 @@ public sealed record RunEvidenceEnvelope(
     ValidationRoute Route,
     ValidationMode Mode,
     string Status,
+    string? Summary,
     string? FailedPhase,
     IReadOnlyDictionary<string, string?> RouteMetadata,
     RunProofEvidence Proof,
@@ -26,6 +27,7 @@ public sealed record RunEvidenceEnvelope(
             context.Route,
             context.Mode,
             report.Status,
+            EvidenceSanitizer.FilterSummary(report),
             report.FailedPhase,
             EvidenceSanitizer.FilterRouteMetadata(context.Route, report.RouteMetadata),
             RunProofEvidence.From(report),
@@ -91,6 +93,37 @@ internal static partial class EvidenceSanitizer
         }
 
         return filtered;
+    }
+
+    public static string? FilterSummary(ScenarioRunReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        var summary = report.Summary;
+        if (string.IsNullOrWhiteSpace(summary) || summary.Length > 256 || summary.Contains('\r') || summary.Contains('\n'))
+            return null;
+
+        if (report.Exception is not null)
+        {
+            if (summary.StartsWith("Address for ", StringComparison.Ordinal)
+                && summary.Contains("resolver was either uninitialized or failed to resolve address", StringComparison.Ordinal))
+                return "Required ClientStructs address was unresolved. The local interop resolver was uninitialized or failed to resolve.";
+
+            if (string.Equals(summary, "[InteropGenerator.Runtime.Resolver] Attempted to call Resolve() without initializing the search space.", StringComparison.Ordinal))
+                return "Local ClientStructs interop resolver was not initialized.";
+
+            if (summary is "ItemDetail addon is not visible."
+                or "ItemDetail agent is unavailable."
+                or "ActionDetail addon is not visible."
+                or "ActionDetail agent is unavailable."
+                or "ItemDetail item-name node is unavailable."
+                or "ActionDetail text node is unavailable.")
+                return summary;
+
+            return null;
+        }
+
+        return summary;
     }
 
     public static JsonObject FilterCaptureMetrics(string scenarioId, JsonObject? data)

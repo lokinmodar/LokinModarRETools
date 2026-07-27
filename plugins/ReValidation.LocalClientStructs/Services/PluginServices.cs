@@ -10,5 +10,6 @@ public sealed class PluginServices
     [PluginService] public static IGameGui GameGui { get; private set; } = null!;
     [PluginService] public static IDataManager DataManager { get; private set; } = null!;
     [PluginService] public static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
+    [PluginService] public static ISigScanner SigScanner { get; private set; } = null!;
     [PluginService] public static IPluginLog PluginLog { get; private set; } = null!;
 }

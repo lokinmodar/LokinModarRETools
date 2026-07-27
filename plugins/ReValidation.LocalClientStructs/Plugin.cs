@@ -12,6 +12,7 @@ using ReValidation.LocalClientStructs.Windows;
 using FFXIVClientStructs.FFXIV.Client.System.Framework;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using InteropGenerator.Runtime;
 using System.Runtime.CompilerServices;
 using Lumina.Excel.Sheets;
 
@@ -57,6 +58,7 @@ public sealed class Plugin : IDalamudPlugin
         var evidenceRoot = Path.Combine(pluginInterface.GetPluginConfigDirectory(), "evidence");
         var clientStructsAssembly = typeof(Framework).Assembly;
         var buildMetadata = LocalClientStructsBuildMetadataLoader.Load(typeof(Plugin).Assembly, clientStructsAssembly);
+        InitializeLocalClientStructsRuntime(buildMetadata);
         var availabilityDetector = new LocalClientStructsAvailabilityDetector(buildMetadata.HasLocalConfiguration, buildMetadata.ProjectPath);
         var quests = PluginServices.DataManager.GetExcelSheet<Quest>().ToArray();
         var journalProbe = new CompletedJournalCapture(quests, new JournalSheetSnapshotBuilder(), "local");
@@ -78,6 +80,17 @@ public sealed class Plugin : IDalamudPlugin
             registry,
             runner,
             new ValidationScenarioContextFactory(evidenceRoot));
+    }
+
+    private static void InitializeLocalClientStructsRuntime(LocalClientStructsBuildMetadata buildMetadata)
+    {
+        if (!buildMetadata.HasLocalConfiguration)
+            return;
+
+        Resolver.GetInstance.Setup(PluginServices.SigScanner.SearchBase);
+        FFXIVClientStructs.Interop.Generated.Addresses.Register();
+        Resolver.GetInstance.Resolve();
+        PluginServices.PluginLog.Information("Initialized local ClientStructs resolver.");
     }
 
     private void Draw() => windowSystem.Draw();
