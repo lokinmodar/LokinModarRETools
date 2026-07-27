@@ -20,6 +20,7 @@ public sealed record ScenarioRunReport(
 {
     public bool CanRun => Precondition?.CanRun ?? false;
     public DateTimeOffset Timestamp { get; } = DateTimeOffset.UtcNow;
+    public string EvidenceRunId { get; } = Guid.NewGuid().ToString("N");
     public ValidationScenarioDefinition Scenario => Definition;
     public string Status => IsSuccess ? "success" : FailedPhase is null ? "incomplete" : "failed";
     public string Summary => Exception?.Message

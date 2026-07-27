@@ -6,7 +6,7 @@ public sealed class MarkdownEvidenceWriter(EvidencePathBuilder paths) : IEvidenc
 {
     public async ValueTask<EvidenceWriteResult> WriteAsync(ScenarioRunReport report, ScenarioExecutionContext context, CancellationToken cancellationToken)
     {
-        var outputPath = paths.BuildPath(context.EvidenceRoot, report.Scenario.Id, context.Route, report.Timestamp, "md");
+        var outputPath = paths.BuildPath(context.EvidenceRoot, report.Scenario.Id, context.Route, report.Timestamp, "md", report.EvidenceRunId);
         var markdown = $$"""
         # {{report.Scenario.Name}}
 
@@ -18,7 +18,7 @@ public sealed class MarkdownEvidenceWriter(EvidencePathBuilder paths) : IEvidenc
 
         ## Verdict
 
-        {{report.Summary}}
+        Run completed with status: `{{report.Status}}`.
         """;
         await File.WriteAllTextAsync(outputPath, markdown, cancellationToken);
         return new EvidenceWriteResult("markdown", outputPath);

@@ -9,7 +9,7 @@ public sealed class JsonEvidenceWriter(EvidencePathBuilder paths) : IEvidenceWri
 
     public async ValueTask<EvidenceWriteResult> WriteAsync(ScenarioRunReport report, ScenarioExecutionContext context, CancellationToken cancellationToken)
     {
-        var outputPath = paths.BuildPath(context.EvidenceRoot, report.Scenario.Id, context.Route, report.Timestamp, "json");
+        var outputPath = paths.BuildPath(context.EvidenceRoot, report.Scenario.Id, context.Route, report.Timestamp, "json", report.EvidenceRunId);
         var payload = JsonSerializer.Serialize(RunEvidenceEnvelope.From(report, context), JsonOptions);
         await File.WriteAllTextAsync(outputPath, payload, cancellationToken);
         return new EvidenceWriteResult("json", outputPath);
