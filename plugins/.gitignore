@@ -1,2 +1,4 @@
 artifacts/evidence/
 local/LocalClientStructs.props
+bin/
+obj/
