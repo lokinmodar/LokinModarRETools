@@ -6,3 +6,11 @@ resolves to anything other than exactly one match.
 
 Evidence metadata exposes only `signature:<id>` values containing the match count and, when
 available, the RVA. Signature patterns and resolver failure details are not exported.
+
+## Journal.CompletedEntries
+
+Open the completed Journal list. Both routes capture only the completed-entry count for evidence;
+entry text and quest keys remain in the in-memory Journal snapshot used for comparison. Full proof
+applies `[REVALIDATION] Journal Sentinel`, verifies it, and restores the original Journal text.
+The local route blocks full proof when local ClientStructs is unavailable. The owner-signature route
+blocks when any scenario-required signature is unresolved or non-unique.
