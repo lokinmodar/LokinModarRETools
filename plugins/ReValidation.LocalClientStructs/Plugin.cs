@@ -6,8 +6,14 @@ using ReValidation.Common.Evidence;
 using ReValidation.Common.Execution;
 using ReValidation.Common.UI;
 using ReValidation.LocalClientStructs.Commands;
+using ReValidation.LocalClientStructs.Runtime;
 using ReValidation.LocalClientStructs.Services;
 using ReValidation.LocalClientStructs.Windows;
+using FFXIVClientStructs.FFXIV.Client.System.Framework;
+using FFXIVClientStructs.FFXIV.Client.UI;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using System.Runtime.CompilerServices;
+using Lumina.Excel.Sheets;
 
 namespace ReValidation.LocalClientStructs;
 
@@ -25,6 +31,7 @@ public sealed class Plugin : IDalamudPlugin
         ArgumentNullException.ThrowIfNull(commandManager);
 
         this.pluginInterface = pluginInterface;
+        pluginInterface.Create<PluginServices>();
         windowSystem = new WindowSystem("ReValidation.LocalClientStructs");
         controller = BuildController(pluginInterface);
         window = new ValidationWindow(controller);
@@ -48,14 +55,27 @@ public sealed class Plugin : IDalamudPlugin
     private static ValidationWindowController BuildController(IDalamudPluginInterface pluginInterface)
     {
         var evidenceRoot = Path.Combine(pluginInterface.GetPluginConfigDirectory(), "evidence");
+        var clientStructsAssembly = typeof(Framework).Assembly;
+        var buildMetadata = LocalClientStructsBuildMetadataLoader.Load(typeof(Plugin).Assembly, clientStructsAssembly);
+        var availabilityDetector = new LocalClientStructsAvailabilityDetector(buildMetadata.HasLocalConfiguration, buildMetadata.ProjectPath);
+        var quests = PluginServices.DataManager.GetExcelSheet<Quest>().ToArray();
+        var journalProbe = new CompletedJournalCapture(quests, new JournalSheetSnapshotBuilder(), "local");
+        var registry = LocalClientStructsScenarioComposition.CreateRegistry(
+            new LocalClientStructsScenarioDependencies(
+                journalProbe,
+                new ItemDetailTooltipProbe(GetItemDetailAddonAddress, GetItemDetailAgentAddress),
+                new ActionDetailTooltipProbe(GetActionDetailAddonAddress, GetActionDetailAgentAddress),
+                availabilityDetector,
+                SupportsJournalMutationProof: false,
+                JournalMutationBlockingReason: "Journal override proof is not configured."));
         var runner = new ValidationScenarioRunner(
-            new MissingLocalClientStructsMetadataProvider("plugins/local/LocalClientStructs.props is missing."),
+            LocalClientStructsBuildMetadataLoader.CreateMetadataProvider(buildMetadata),
             new JsonEvidenceWriter(new EvidencePathBuilder()),
             new MarkdownEvidenceWriter(new EvidencePathBuilder()));
 
         return new ValidationWindowController(
             new ValidationWindowState(),
-            LocalClientStructsScenarioComposition.CreateRegistry(),
+            registry,
             runner,
             new ValidationScenarioContextFactory(evidenceRoot));
     }
@@ -65,5 +85,27 @@ public sealed class Plugin : IDalamudPlugin
     private void OpenWindow()
     {
         window.IsOpen = true;
+    }
+
+    private static unsafe nint GetItemDetailAddonAddress()
+    {
+        return PluginServices.GameGui.GetAddonByName("ItemDetail", 1).Address;
+    }
+
+    private static unsafe nint GetItemDetailAgentAddress()
+    {
+        var agent = Framework.Instance()->GetUIModule()->GetAgentModule()->GetAgentByInternalId(AgentId.ItemDetail);
+        return (nint)agent;
+    }
+
+    private static unsafe nint GetActionDetailAddonAddress()
+    {
+        return PluginServices.GameGui.GetAddonByName("ActionDetail", 1).Address;
+    }
+
+    private static unsafe nint GetActionDetailAgentAddress()
+    {
+        var agent = Framework.Instance()->GetUIModule()->GetAgentModule()->GetAgentByInternalId(AgentId.ActionDetail);
+        return (nint)agent;
     }
 }

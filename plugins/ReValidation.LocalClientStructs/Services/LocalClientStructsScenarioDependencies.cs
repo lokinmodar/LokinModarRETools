@@ -9,4 +9,6 @@ public sealed record LocalClientStructsScenarioDependencies(
     LocalClientStructsAvailabilityDetector AvailabilityDetector,
     IJournalCompletedEntriesComparisonSource? JournalComparisonSource = null,
     ITooltipComparisonSource? ItemTooltipComparisonSource = null,
-    ITooltipComparisonSource? ActionTooltipComparisonSource = null);
+    ITooltipComparisonSource? ActionTooltipComparisonSource = null,
+    bool SupportsJournalMutationProof = true,
+    string? JournalMutationBlockingReason = null);

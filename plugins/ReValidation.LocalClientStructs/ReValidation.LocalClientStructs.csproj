@@ -6,14 +6,30 @@
     <Nullable>enable</Nullable>
     <Use_DalamudPackager>false</Use_DalamudPackager>
     <RequireLocalClientStructs Condition="'$(RequireLocalClientStructs)' == ''">false</RequireLocalClientStructs>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <Import Project="..\local\LocalClientStructs.props" Condition="Exists('..\local\LocalClientStructs.props')" />
 
+  <PropertyGroup>
+    <Use_Dalamud_FFXIVClientStructs Condition="'$(ClientStructsProjectPath)' != '' and Exists('$(ClientStructsProjectPath)')">false</Use_Dalamud_FFXIVClientStructs>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\ReValidation.Common\ReValidation.Common.csproj" />
     <ProjectReference Include="$(ClientStructsProjectPath)" Condition="'$(ClientStructsProjectPath)' != '' and Exists('$(ClientStructsProjectPath)')" />
+    <Reference Include="FFXIVClientStructs" HintPath="$(DalamudLibPath)FFXIVClientStructs.dll" Private="false" Condition="'$(ClientStructsProjectPath)' == '' or !Exists('$(ClientStructsProjectPath)')" />
+    <Reference Include="InteropGenerator.Runtime" HintPath="$(DalamudLibPath)InteropGenerator.Runtime.dll" Private="false" Condition="'$(Use_Dalamud_FFXIVClientStructs)' == 'false'" />
+    <Reference Include="Lumina" HintPath="$(DalamudLibPath)Lumina.dll" Private="false" />
+    <Reference Include="Lumina.Excel" HintPath="$(DalamudLibPath)Lumina.Excel.dll" Private="false" />
     <Reference Include="Dalamud.Bindings.ImGui" HintPath="$(DalamudLibPath)Dalamud.Bindings.ImGui.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>ClientStructsProjectPath</_Parameter1>
+      <_Parameter2>$(ClientStructsProjectPath)</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <Target Name="ValidateLocalClientStructs" BeforeTargets="Build">

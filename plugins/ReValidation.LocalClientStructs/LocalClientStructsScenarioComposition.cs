@@ -33,7 +33,9 @@ public static class LocalClientStructsScenarioComposition
             new JournalCompletedEntriesLocalScenario(
                 dependencies.JournalProbe,
                 dependencies.AvailabilityDetector,
-                dependencies.JournalComparisonSource),
+                dependencies.JournalComparisonSource,
+                supportsMutationProof: dependencies.SupportsJournalMutationProof,
+                mutationBlockingReason: dependencies.JournalMutationBlockingReason),
             new TooltipItemDetailLocalScenario(
                 dependencies.ItemTooltipProbe,
                 dependencies.AvailabilityDetector,
