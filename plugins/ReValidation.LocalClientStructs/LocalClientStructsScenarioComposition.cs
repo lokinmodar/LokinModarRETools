@@ -2,6 +2,7 @@ using ReValidation.Common.Execution;
 using ReValidation.Common.Models;
 using ReValidation.Common.Scenarios;
 using ReValidation.LocalClientStructs.Scenarios;
+using ReValidation.LocalClientStructs.Services;
 
 namespace ReValidation.LocalClientStructs;
 
@@ -22,6 +23,27 @@ public static class LocalClientStructsScenarioComposition
                 new UnavailableTooltipProbe(),
                 runtimeBlockingReason: BlockingReason),
         ]);
+
+    public static ValidationScenarioRegistry CreateRegistry(LocalClientStructsScenarioDependencies dependencies)
+    {
+        ArgumentNullException.ThrowIfNull(dependencies);
+
+        return new ValidationScenarioRegistry(
+        [
+            new JournalCompletedEntriesLocalScenario(
+                dependencies.JournalProbe,
+                dependencies.AvailabilityDetector,
+                dependencies.JournalComparisonSource),
+            new TooltipItemDetailLocalScenario(
+                dependencies.ItemTooltipProbe,
+                dependencies.AvailabilityDetector,
+                dependencies.ItemTooltipComparisonSource),
+            new TooltipActionDetailLocalScenario(
+                dependencies.ActionTooltipProbe,
+                dependencies.AvailabilityDetector,
+                dependencies.ActionTooltipComparisonSource),
+        ]);
+    }
 
     private sealed class UnavailableJournalProbe : IJournalCompletedEntriesProbe
     {
