@@ -1,9 +1,10 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Dalamud.NET.Sdk/15.0.0">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Use_DalamudPackager>false</Use_DalamudPackager>
     <RequireLocalClientStructs Condition="'$(RequireLocalClientStructs)' == ''">false</RequireLocalClientStructs>
   </PropertyGroup>
 
@@ -12,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ReValidation.Common\ReValidation.Common.csproj" />
     <ProjectReference Include="$(ClientStructsProjectPath)" Condition="'$(ClientStructsProjectPath)' != '' and Exists('$(ClientStructsProjectPath)')" />
+    <Reference Include="Dalamud.Bindings.ImGui" HintPath="$(DalamudLibPath)Dalamud.Bindings.ImGui.dll" Private="false" />
   </ItemGroup>
 
   <Target Name="ValidateLocalClientStructs" BeforeTargets="Build">

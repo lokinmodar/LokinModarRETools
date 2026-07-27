@@ -22,6 +22,7 @@ public sealed record ScenarioRunReport(
     public DateTimeOffset Timestamp { get; } = DateTimeOffset.UtcNow;
     public string EvidenceRunId { get; } = Guid.NewGuid().ToString("N");
     public ValidationScenarioDefinition Scenario => Definition;
+    public IReadOnlyList<string> ArtifactPaths => Evidence.Select(evidence => evidence.OutputPath).ToArray();
     public string Status => IsSuccess ? "success" : FailedPhase is null ? "incomplete" : "failed";
     public string Summary => Exception?.Message
         ?? AssertResult?.Summary

@@ -4,7 +4,7 @@ using ReValidation.Common.Models;
 
 namespace ReValidation.Common.Execution;
 
-public sealed class ValidationScenarioRunner
+public sealed class ValidationScenarioRunner : IValidationScenarioRunner
 {
     private static readonly TimeSpan CleanupTimeout = TimeSpan.FromSeconds(5);
     private readonly TimeSpan cleanupTimeout;

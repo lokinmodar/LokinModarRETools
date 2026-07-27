@@ -22,3 +22,15 @@ evidence; payload lines and visible text remain in memory for tooltip comparison
 `[REVALIDATION] Tooltip Sentinel`, verifies it, and restores the original visible text. The local
 route blocks full proof when local ClientStructs is unavailable. The owner-signature route blocks when
 any scenario-required signature is unresolved or non-unique.
+
+## Operator Workflow
+
+1. Open the route window with `/revalidate-local` or `/revalidate-owner`.
+2. Confirm that the required route-specific runtime adapter has registered the scenario.
+3. Select the scenario and the required validation mode: `CaptureOnly`, `Compare`, `OverrideAssert`, or `FullProof`.
+4. Prepare the required Journal or tooltip UI cue, then select `Run selected scenario`.
+5. Wait for the window status to change from `Running` to `Passed` or `Failed`.
+6. Open the JSON and Markdown paths listed in the window and preserve both artifacts with the review notes.
+
+Do not bypass a blocked run. A block means that the route's local ClientStructs availability or required
+owner signatures were not validated. Correct the route-specific prerequisite and run the scenario again.
