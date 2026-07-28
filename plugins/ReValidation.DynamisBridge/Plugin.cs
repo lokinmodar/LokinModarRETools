@@ -30,7 +30,7 @@ public sealed class Plugin : IDalamudPlugin
         var anchorCollector = new LiveJournalAnchorCollector(
             () => PluginServices.GameGui.GetAddonByName("Journal", 1).Address,
             () => Array.Empty<nint>());
-        var inspectionService = new PointerInspectionService(dynamisApiClient, new NeighborPointerEnumerator());
+        var inspectionService = new PointerInspectionService(dynamisApiClient);
         var controller = new JournalExplorerController(
             new JournalExplorerWindowState(),
             availabilityService,
