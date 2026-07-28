@@ -1,16 +1,20 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
+using ReValidation.DynamisBridge.Services;
 
 namespace ReValidation.DynamisBridge.Windows;
 
 public sealed class JournalExplorerWindow : Window
 {
-    public JournalExplorerWindow() : base("ReValidation: Dynamis Bridge")
+    private readonly IDynamisAvailabilityService availabilityService;
+
+    public JournalExplorerWindow(IDynamisAvailabilityService availabilityService) : base("ReValidation: Dynamis Bridge")
     {
+        this.availabilityService = availabilityService;
     }
 
     public override void Draw()
     {
-        ImGui.TextUnformatted("Dynamis bridge scaffold loaded.");
+        ImGui.TextUnformatted(availabilityService.Current.StatusText);
     }
 }
