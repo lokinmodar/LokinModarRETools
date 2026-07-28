@@ -26,7 +26,34 @@ public sealed class EvidenceNoteWriterTests
         var markdown = File.ReadAllText(outputPath);
 
         Assert.Contains("provider", markdown, StringComparison.Ordinal);
+        Assert.Contains("Confidence: 95", markdown, StringComparison.Ordinal);
         Assert.Contains("HighValueForIda", markdown, StringComparison.Ordinal);
         Assert.Contains("Likely pre-UI container", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenExportsShareTimestamp_PreservesBothNotes()
+    {
+        var session = new JournalProbeSession(
+            new DateTimeOffset(2026, 7, 28, 12, 0, 0, TimeSpan.Zero),
+            "ReValidation.DynamisBridge/0.1.0",
+            4,
+            "ffxiv_dx11.exe sha256=example",
+            [],
+            []);
+        using var temp = new TemporaryDirectory();
+        var writer = new EvidenceNoteWriter(new FixedTimeProvider());
+
+        var firstPath = await writer.WriteAsync(session, temp.Path, CancellationToken.None);
+        var secondPath = await writer.WriteAsync(session, temp.Path, CancellationToken.None);
+
+        Assert.NotEqual(firstPath, secondPath);
+        Assert.True(File.Exists(firstPath));
+        Assert.True(File.Exists(secondPath));
+    }
+
+    private sealed class FixedTimeProvider : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => new(2026, 7, 28, 12, 0, 0, TimeSpan.Zero);
     }
 }

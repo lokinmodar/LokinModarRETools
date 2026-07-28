@@ -7,7 +7,7 @@ public sealed class EvidenceNoteWriter(TimeProvider timeProvider)
     public async Task<string> WriteAsync(JournalProbeSession session, string outputRoot, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(outputRoot);
-        var path = Path.Combine(outputRoot, $"journal-session-{timeProvider.GetUtcNow():yyyyMMdd-HHmmss}.md");
+        var path = Path.Combine(outputRoot, $"journal-session-{timeProvider.GetUtcNow():yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.md");
         var lines = new List<string>
         {
             "# Journal Session Note",
@@ -24,7 +24,7 @@ public sealed class EvidenceNoteWriter(TimeProvider timeProvider)
         lines.Add(string.Empty);
         lines.Add("## Candidates");
         lines.AddRange(session.Candidates.Select(candidate =>
-            $"- `{candidate.CandidateId}` `{candidate.Address:X}` {candidate.Classification} {candidate.Disposition}: {candidate.Notes}"));
+            $"- `{candidate.CandidateId}` `{candidate.Address:X}` {candidate.Classification} Confidence: {candidate.Confidence} {candidate.Disposition}: {candidate.Notes}"));
 
         await File.WriteAllLinesAsync(path, lines, cancellationToken);
         return path;
