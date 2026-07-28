@@ -50,11 +50,11 @@ public sealed class LocalTooltipProofExecutor(ITooltipProbe probe, ITooltipProof
         {
             try { effectRestored = (await probe.RestoreAsync(CancellationToken.None)).Passed; }
             catch (Exception exception) when (exception is not OperationCanceledException) { reason ??= exception.Message; }
+            hook?.Dispose();
         }
 
         var hits = hook?.ObservedHitCount ?? 0;
         var hookInstalled = hook is not null;
-        hook?.Dispose();
         var verdict = reason is not null ? "blocked" : !hookInstalled ? "blocked" : hits == 0 ? "not-observed" : !effectRestored ? "effect-not-proven" : "passed";
         reason ??= verdict == "not-observed" ? "Tooltip function hook did not observe a call." : verdict == "effect-not-proven" ? "Tooltip effect was not restored." : null;
         return new TargetProofRecord(targetId, verdict, 1, null, hits, hookInstalled, effectApplied, effectRestored, reason);

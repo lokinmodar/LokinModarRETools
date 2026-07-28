@@ -30,10 +30,14 @@ public sealed class OwnerTooltipProofExecutor(ITooltipProbe probe, ITooltipProof
         string? reason = null;
         try { hook = hookFactory.Create(targetId); hook.Enable(); await probe.CaptureAsync(cancellationToken); applied = await probe.ApplySentinelOverrideAsync(Sentinel, cancellationToken) is not null; var assertion = await probe.AssertSentinelAsync(Sentinel, cancellationToken); if (assertion is null || !assertion.Passed) reason = "Tooltip sentinel was not visibly asserted."; }
         catch (Exception exception) when (exception is not OperationCanceledException) { reason = exception.Message; }
-        finally { try { restored = (await probe.RestoreAsync(CancellationToken.None)).Passed; } catch (Exception exception) when (exception is not OperationCanceledException) { reason ??= exception.Message; } }
+        finally
+        {
+            try { restored = (await probe.RestoreAsync(CancellationToken.None)).Passed; }
+            catch (Exception exception) when (exception is not OperationCanceledException) { reason ??= exception.Message; }
+            hook?.Dispose();
+        }
         var hits = hook?.ObservedHitCount ?? 0;
         var installed = hook is not null;
-        hook?.Dispose();
         var verdict = reason is not null ? "blocked" : !installed ? "blocked" : hits == 0 ? "not-observed" : !restored ? "effect-not-proven" : "passed";
         reason ??= verdict == "not-observed" ? "Tooltip function hook did not observe a call." : verdict == "effect-not-proven" ? "Tooltip effect was not restored." : null;
         return new TargetProofRecord(targetId, verdict, 0, null, hits, installed, applied, restored, reason);
