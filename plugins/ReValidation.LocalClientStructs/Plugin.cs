@@ -4,6 +4,7 @@ using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using ReValidation.Common.Evidence;
 using ReValidation.Common.Execution;
+using ReValidation.Common.Proof;
 using ReValidation.Common.UI;
 using ReValidation.LocalClientStructs.Commands;
 using ReValidation.LocalClientStructs.Runtime;
@@ -25,6 +26,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly ValidationWindow window;
     private readonly PluginCommandRegistrar commandRegistrar;
     private readonly ValidationWindowController controller;
+    private readonly IBranchValidationRouteAdapter branchRouteAdapter;
 
     public Plugin(IDalamudPluginInterface pluginInterface, ICommandManager commandManager)
     {
@@ -34,7 +36,7 @@ public sealed class Plugin : IDalamudPlugin
         this.pluginInterface = pluginInterface;
         pluginInterface.Create<PluginServices>();
         windowSystem = new WindowSystem("ReValidation.LocalClientStructs");
-        controller = BuildController(pluginInterface);
+        controller = BuildController(pluginInterface, out branchRouteAdapter);
         window = new ValidationWindow(controller);
         commandRegistrar = new PluginCommandRegistrar(commandManager, window);
         windowSystem.AddWindow(window);
@@ -53,7 +55,7 @@ public sealed class Plugin : IDalamudPlugin
         windowSystem.RemoveAllWindows();
     }
 
-    private static ValidationWindowController BuildController(IDalamudPluginInterface pluginInterface)
+    private static ValidationWindowController BuildController(IDalamudPluginInterface pluginInterface, out IBranchValidationRouteAdapter branchRouteAdapter)
     {
         var evidenceRoot = Path.Combine(pluginInterface.GetPluginConfigDirectory(), "evidence");
         var diagnosticsSink = new PluginLogDiagnosticsSink(PluginServices.PluginLog);
@@ -63,11 +65,16 @@ public sealed class Plugin : IDalamudPlugin
         var availabilityDetector = new LocalClientStructsAvailabilityDetector(buildMetadata.HasLocalConfiguration, buildMetadata.ProjectPath);
         var quests = PluginServices.DataManager.GetExcelSheet<Quest>().ToArray();
         var journalProbe = new CompletedJournalCapture(quests, new JournalSheetSnapshotBuilder(), "local");
+        var itemTooltipProbe = new ItemDetailTooltipProbe(GetItemDetailAddonAddress, GetItemDetailAgentAddress);
+        var actionTooltipProbe = new ActionDetailTooltipProbe(GetActionDetailAddonAddress, GetActionDetailAgentAddress);
+        branchRouteAdapter = new LocalBranchValidationRouteAdapter(
+            new LocalTooltipProofExecutor(itemTooltipProbe),
+            new LocalTooltipProofExecutor(actionTooltipProbe));
         var registry = LocalClientStructsScenarioComposition.CreateRegistry(
             new LocalClientStructsScenarioDependencies(
                 journalProbe,
-                new ItemDetailTooltipProbe(GetItemDetailAddonAddress, GetItemDetailAgentAddress),
-                new ActionDetailTooltipProbe(GetActionDetailAddonAddress, GetActionDetailAgentAddress),
+                itemTooltipProbe,
+                actionTooltipProbe,
                 availabilityDetector,
                 SupportsJournalMutationProof: false,
                 JournalMutationBlockingReason: "Journal override proof is not configured."));
