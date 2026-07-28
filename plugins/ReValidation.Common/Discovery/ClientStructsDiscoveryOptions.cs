@@ -2,6 +2,17 @@ namespace ReValidation.Common.Discovery;
 
 public sealed record ClientStructsDiscoveryOptions
 {
+    public const string DefaultBaseRef = "upstream/main";
+
+    public ClientStructsDiscoveryOptions(
+        string repositoryPath,
+        DiscoveryMode mode,
+        IReadOnlyList<TargetFamily> families,
+        string? targetFilter = null)
+        : this(repositoryPath, DefaultBaseRef, mode, families, targetFilter)
+    {
+    }
+
     public ClientStructsDiscoveryOptions(
         string repositoryPath,
         string baseRef,

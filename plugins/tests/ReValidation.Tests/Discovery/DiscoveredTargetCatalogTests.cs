@@ -6,6 +6,17 @@ namespace ReValidation.Tests.Discovery;
 public sealed class DiscoveredTargetCatalogTests
 {
     [Fact]
+    public void Options_DefaultBaseRef_IsUpstreamMain()
+    {
+        var options = new ClientStructsDiscoveryOptions(
+            repositoryPath: @"C:\Dante\_dalamud\FFXIVClientStructs",
+            mode: DiscoveryMode.Diff,
+            families: [TargetFamily.Journal]);
+
+        Assert.Equal("upstream/main", options.BaseRef);
+    }
+
+    [Fact]
     public void FilterTargets_ReturnsOnlyRequestedFamilyAndPrefix()
     {
         var options = new ClientStructsDiscoveryOptions(
