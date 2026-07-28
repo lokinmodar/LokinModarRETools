@@ -8,8 +8,17 @@ public sealed record ClientStructsDiscoveryOptions
         string repositoryPath,
         DiscoveryMode mode,
         IReadOnlyList<TargetFamily> families,
-        string? targetFilter = null,
-        string? baseRef = null)
+        string? targetFilter = null)
+        : this(repositoryPath, DefaultBaseRef, mode, families, targetFilter)
+    {
+    }
+
+    public ClientStructsDiscoveryOptions(
+        string repositoryPath,
+        string? baseRef,
+        DiscoveryMode mode,
+        IReadOnlyList<TargetFamily> families,
+        string? targetFilter = null)
     {
         RepositoryPath = repositoryPath;
         BaseRef = string.IsNullOrWhiteSpace(baseRef) ? DefaultBaseRef : baseRef;

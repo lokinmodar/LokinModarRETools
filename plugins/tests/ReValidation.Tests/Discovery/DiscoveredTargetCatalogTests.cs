@@ -44,6 +44,19 @@ public sealed class DiscoveredTargetCatalogTests
     }
 
     [Fact]
+    public void Options_PreservesLegacyPositionalBaseRefConstructor()
+    {
+        var options = new ClientStructsDiscoveryOptions(
+            @"C:\Dante\_dalamud\FFXIVClientStructs",
+            "release/7.x",
+            DiscoveryMode.Diff,
+            [TargetFamily.Journal],
+            null);
+
+        Assert.Equal("release/7.x", options.BaseRef);
+    }
+
+    [Fact]
     public void FilterTargets_ReturnsOnlyRequestedFamilyAndPrefix()
     {
         var options = new ClientStructsDiscoveryOptions(
