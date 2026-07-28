@@ -29,4 +29,5 @@ public enum ProofProfile
 {
     DetourFunction,
     StaticAddressConsumer,
+    ConsumerChain,
 }
