@@ -106,3 +106,11 @@ Review the artifacts for:
 - allowlisted route metadata only
 
 Do not treat raw UI success alone as proof. The saved artifacts are the reproducible record.
+
+## Dynamis Bridge Journal Session
+
+1. Load `ReValidation.DynamisBridge` and confirm its status is `Ready`.
+2. Open the Journal UI.
+3. Select `Arm Journal Session`.
+4. Inspect promising candidates and mark high-value candidates for IDA as appropriate.
+5. Select `Export Session Note` to save the local exploration note.

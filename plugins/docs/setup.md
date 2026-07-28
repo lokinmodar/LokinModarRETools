@@ -14,6 +14,10 @@ dotnet test .\plugins\tests\ReValidation.Tests\ReValidation.Tests.csproj
 
 Both plugins use the real `Dalamud.NET.Sdk` and require a local Dalamud development installation at the SDK default location or a valid `DALAMUD_HOME`.
 
+## Dynamis Bridge
+
+Install the `ReValidation.DynamisBridge` plugin, then install and enable `Dynamis`. Open the plugin configuration with `/revalidation-dynamis` and verify that its status line reaches `Ready` before arming a Journal session.
+
 ## Local ClientStructs Route
 
 Copy `plugins/local/LocalClientStructs.props.example` to `plugins/local/LocalClientStructs.props` and set `ClientStructsProjectPath` to your local `FFXIVClientStructs\FFXIVClientStructs\FFXIVClientStructs.csproj`.

@@ -5,6 +5,7 @@ using Dalamud.Plugin.Services;
 using ReValidation.DynamisBridge.Commands;
 using ReValidation.DynamisBridge.Ipc;
 using ReValidation.DynamisBridge.Services;
+using ReValidation.DynamisBridge.UI;
 using ReValidation.DynamisBridge.Windows;
 
 namespace ReValidation.DynamisBridge;
@@ -21,11 +22,26 @@ public sealed class Plugin : IDalamudPlugin
     {
         this.pluginInterface = pluginInterface;
         pluginInterface.Create<PluginServices>();
-        dynamisApiClient = new DynamisApiClient(new DalamudDynamisIpcGateway(pluginInterface), minimumApiVersion: 4);
+        var gateway = new DalamudDynamisIpcGateway(pluginInterface);
+        dynamisApiClient = new DynamisApiClient(gateway, minimumApiVersion: 4);
         dynamisApiClient.Refresh();
         var availabilityService = new DynamisAvailabilityService(dynamisApiClient);
+        var exportRoot = Path.Combine(pluginInterface.GetPluginConfigDirectory(), "dynamis-bridge");
+        var anchorCollector = new LiveJournalAnchorCollector(
+            () => PluginServices.GameGui.GetAddonByName("Journal", 1).Address,
+            () => Array.Empty<nint>());
+        var inspectionService = new PointerInspectionService(dynamisApiClient, new NeighborPointerEnumerator());
+        var controller = new JournalExplorerController(
+            new JournalExplorerWindowState(),
+            availabilityService,
+            anchorCollector,
+            inspectionService,
+            new JournalCandidateRanker(),
+            new EvidenceNoteWriter(TimeProvider.System),
+            "ReValidation.DynamisBridge/0.1.0",
+            () => Environment.ProcessPath);
         windowSystem = new WindowSystem("ReValidation.DynamisBridge");
-        window = new JournalExplorerWindow(availabilityService);
+        window = new JournalExplorerWindow(controller, exportRoot);
         commandRegistrar = new PluginCommandRegistrar(commandManager, window);
         windowSystem.AddWindow(window);
         pluginInterface.UiBuilder.Draw += Draw;

@@ -65,3 +65,7 @@ Correct the route-specific prerequisite, or lower the requested mode to one the 
 and run the scenario again.
 Every configured evidence writer is attempted. A writer failure marks the run failed with a sanitized export
 failure record while allowing later writers to produce any remaining artifact.
+
+## Journal Exploration Via Dynamis Bridge
+
+The Dynamis bridge is exploration-only. It reads Journal UI anchors, ranks nearby pointer candidates, and delegates object or region inspection to Dynamis IPC. It does not mutate game state, install detours, send server traffic, or create proof-schema evidence.
