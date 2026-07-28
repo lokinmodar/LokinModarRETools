@@ -45,9 +45,13 @@ public sealed class ClientStructsGitDiffDiscoveryService : IClientStructsDiscove
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(repositoryPath);
 
-        if (!Directory.Exists(repositoryPath)
-            || !File.Exists(Path.Combine(repositoryPath, "FFXIVClientStructs.slnx"))
-            || !File.Exists(Path.Combine(repositoryPath, "FFXIVClientStructs", "FFXIVClientStructs.csproj")))
+        var normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(repositoryPath));
+        var gitPath = Path.Combine(normalizedRoot, ".git");
+        if (!string.Equals(Path.GetFileName(normalizedRoot), "FFXIVClientStructs", StringComparison.OrdinalIgnoreCase)
+            || !Directory.Exists(normalizedRoot)
+            || !File.Exists(Path.Combine(normalizedRoot, "FFXIVClientStructs.slnx"))
+            || !File.Exists(Path.Combine(normalizedRoot, "FFXIVClientStructs", "FFXIVClientStructs.csproj"))
+            || (!Directory.Exists(gitPath) && !File.Exists(gitPath)))
             throw new ArgumentException("Repository path must be a local FFXIVClientStructs checkout.", nameof(repositoryPath));
     }
 

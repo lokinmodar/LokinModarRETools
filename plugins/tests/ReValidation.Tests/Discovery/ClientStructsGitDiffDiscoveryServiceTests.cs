@@ -55,14 +55,15 @@ public sealed class ClientStructsGitDiffDiscoveryServiceTests
     }
 
     [Fact]
-    public async Task DiscoverAsync_RejectsRootsThatAreNotClientStructsCheckouts()
+    public async Task DiscoverAsync_RejectsMarkerOnlyRootsThatAreNotGitCheckouts()
     {
         var diffReader = new FakeGitDiffReader([]);
         var discovery = new ClientStructsGitDiffDiscoveryService(diffReader, new InteropBindingSourceParser());
+        using var markerOnlyRoot = new ClientStructsCheckoutDirectory(isGitCheckout: false);
 
         await Assert.ThrowsAsync<ArgumentException>(() => discovery.DiscoverAsync(
             new ClientStructsDiscoveryOptions(
-                Path.GetTempPath(),
+                markerOnlyRoot.Path,
                 "upstream/main",
                 DiscoveryMode.Diff,
                 [TargetFamily.Journal],
@@ -88,16 +89,20 @@ public sealed class ClientStructsGitDiffDiscoveryServiceTests
 
     private sealed class ClientStructsCheckoutDirectory : IDisposable
     {
-        public ClientStructsCheckoutDirectory()
+        public ClientStructsCheckoutDirectory(bool isGitCheckout = true)
         {
-            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"revalidation-clientstructs-{Guid.NewGuid():N}");
+            ParentPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"revalidation-clientstructs-{Guid.NewGuid():N}");
+            Path = System.IO.Path.Combine(ParentPath, "FFXIVClientStructs");
             Directory.CreateDirectory(System.IO.Path.Combine(Path, "FFXIVClientStructs"));
             File.WriteAllText(System.IO.Path.Combine(Path, "FFXIVClientStructs.slnx"), "<Solution />");
             File.WriteAllText(System.IO.Path.Combine(Path, "FFXIVClientStructs", "FFXIVClientStructs.csproj"), "<Project />");
+            if (isGitCheckout)
+                File.WriteAllText(System.IO.Path.Combine(Path, ".git"), "gitdir: ../.git/worktrees/revalidation");
         }
 
+        private string ParentPath { get; }
         public string Path { get; }
 
-        public void Dispose() => Directory.Delete(Path, recursive: true);
+        public void Dispose() => Directory.Delete(ParentPath, recursive: true);
     }
 }
