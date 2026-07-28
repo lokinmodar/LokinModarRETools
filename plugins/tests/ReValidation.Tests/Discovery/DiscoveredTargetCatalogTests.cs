@@ -16,6 +16,33 @@ public sealed class DiscoveredTargetCatalogTests
         Assert.Equal("upstream/main", options.BaseRef);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Options_NormalizesMissingBaseRef(string? baseRef)
+    {
+        var options = new ClientStructsDiscoveryOptions(
+            repositoryPath: @"C:\Dante\_dalamud\FFXIVClientStructs",
+            mode: DiscoveryMode.Diff,
+            families: [TargetFamily.Journal],
+            baseRef: baseRef);
+
+        Assert.Equal(ClientStructsDiscoveryOptions.DefaultBaseRef, options.BaseRef);
+    }
+
+    [Fact]
+    public void Options_PreservesExplicitBaseRefOverride()
+    {
+        var options = new ClientStructsDiscoveryOptions(
+            repositoryPath: @"C:\Dante\_dalamud\FFXIVClientStructs",
+            mode: DiscoveryMode.Diff,
+            families: [TargetFamily.Journal],
+            baseRef: "release/7.x");
+
+        Assert.Equal("release/7.x", options.BaseRef);
+    }
+
     [Fact]
     public void FilterTargets_ReturnsOnlyRequestedFamilyAndPrefix()
     {
