@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Text;
+
 namespace ReValidation.Common.Discovery;
 
 public sealed class ClientStructsGitDiffDiscoveryService : IClientStructsDiscoveryService
@@ -46,13 +49,53 @@ public sealed class ClientStructsGitDiffDiscoveryService : IClientStructsDiscove
         ArgumentException.ThrowIfNullOrWhiteSpace(repositoryPath);
 
         var normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(repositoryPath));
-        var gitPath = Path.Combine(normalizedRoot, ".git");
         if (!string.Equals(Path.GetFileName(normalizedRoot), "FFXIVClientStructs", StringComparison.OrdinalIgnoreCase)
             || !Directory.Exists(normalizedRoot)
             || !File.Exists(Path.Combine(normalizedRoot, "FFXIVClientStructs.slnx"))
             || !File.Exists(Path.Combine(normalizedRoot, "FFXIVClientStructs", "FFXIVClientStructs.csproj"))
-            || (!Directory.Exists(gitPath) && !File.Exists(gitPath)))
+            || !IsGitCheckoutRoot(normalizedRoot))
             throw new ArgumentException("Repository path must be a local FFXIVClientStructs checkout.", nameof(repositoryPath));
+    }
+
+    private static bool IsGitCheckoutRoot(string repositoryPath)
+    {
+        var isInsideWorkTree = ReadGitOutput(repositoryPath, "rev-parse", "--is-inside-work-tree");
+        if (!string.Equals(isInsideWorkTree, "true", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var topLevel = ReadGitOutput(repositoryPath, "rev-parse", "--show-toplevel");
+        return !string.IsNullOrWhiteSpace(topLevel)
+            && string.Equals(
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(topLevel)),
+                repositoryPath,
+                StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ReadGitOutput(string repositoryPath, params string[] arguments)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "git",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+        startInfo.ArgumentList.Add("-C");
+        startInfo.ArgumentList.Add(repositoryPath);
+        foreach (var argument in arguments)
+            startInfo.ArgumentList.Add(argument);
+
+        using var process = Process.Start(startInfo);
+        if (process is null)
+            return null;
+
+        var output = process.StandardOutput.ReadToEnd();
+        process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        return process.ExitCode == 0 ? output.Trim() : null;
     }
 
     private static string ReadSource(string repositoryPath, string sourceFile) =>

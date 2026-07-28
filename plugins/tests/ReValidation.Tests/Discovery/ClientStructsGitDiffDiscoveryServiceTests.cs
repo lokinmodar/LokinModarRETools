@@ -59,7 +59,7 @@ public sealed class ClientStructsGitDiffDiscoveryServiceTests
     {
         var diffReader = new FakeGitDiffReader([]);
         var discovery = new ClientStructsGitDiffDiscoveryService(diffReader, new InteropBindingSourceParser());
-        using var markerOnlyRoot = new ClientStructsCheckoutDirectory(isGitCheckout: false);
+        using var markerOnlyRoot = new ClientStructsCheckoutDirectory(initializeGitCheckout: false, includeGitSentinel: true);
 
         await Assert.ThrowsAsync<ArgumentException>(() => discovery.DiscoverAsync(
             new ClientStructsDiscoveryOptions(
@@ -89,14 +89,16 @@ public sealed class ClientStructsGitDiffDiscoveryServiceTests
 
     private sealed class ClientStructsCheckoutDirectory : IDisposable
     {
-        public ClientStructsCheckoutDirectory(bool isGitCheckout = true)
+        public ClientStructsCheckoutDirectory(bool initializeGitCheckout = true, bool includeGitSentinel = false)
         {
             ParentPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"revalidation-clientstructs-{Guid.NewGuid():N}");
             Path = System.IO.Path.Combine(ParentPath, "FFXIVClientStructs");
             Directory.CreateDirectory(System.IO.Path.Combine(Path, "FFXIVClientStructs"));
             File.WriteAllText(System.IO.Path.Combine(Path, "FFXIVClientStructs.slnx"), "<Solution />");
             File.WriteAllText(System.IO.Path.Combine(Path, "FFXIVClientStructs", "FFXIVClientStructs.csproj"), "<Project />");
-            if (isGitCheckout)
+            if (initializeGitCheckout)
+                InitializeGitCheckout();
+            else if (includeGitSentinel)
                 File.WriteAllText(System.IO.Path.Combine(Path, ".git"), "gitdir: ../.git/worktrees/revalidation");
         }
 
@@ -104,5 +106,25 @@ public sealed class ClientStructsGitDiffDiscoveryServiceTests
         public string Path { get; }
 
         public void Dispose() => Directory.Delete(ParentPath, recursive: true);
+
+        private void InitializeGitCheckout()
+        {
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            startInfo.ArgumentList.Add("-C");
+            startInfo.ArgumentList.Add(Path);
+            startInfo.ArgumentList.Add("init");
+
+            using var process = System.Diagnostics.Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Could not start git init.");
+            process.WaitForExit();
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException($"git init failed: {process.StandardError.ReadToEnd()}");
+        }
     }
 }
