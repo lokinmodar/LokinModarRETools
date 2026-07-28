@@ -1,0 +1,6 @@
+{
+  "Author": "lokinmodar",
+  "Name": "ReValidation.DynamisBridge",
+  "Punchline": "Explores Journal runtime objects through Dynamis IPC.",
+  "Description": "Journal-focused runtime exploration bridge over Dynamis with Markdown session notes."
+}

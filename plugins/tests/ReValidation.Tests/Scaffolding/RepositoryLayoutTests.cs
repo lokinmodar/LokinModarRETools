@@ -17,6 +17,16 @@ public sealed class RepositoryLayoutTests
     }
 
     [Fact]
+    public void ReValidationSolutionContainsDynamisBridgeProject()
+    {
+        var root = RepoRoot.Find();
+        var pluginsRoot = Path.Combine(root, "plugins");
+
+        Assert.True(File.Exists(Path.Combine(pluginsRoot, "ReValidation.DynamisBridge", "ReValidation.DynamisBridge.csproj")));
+        Assert.True(File.Exists(Path.Combine(pluginsRoot, "ReValidation.DynamisBridge", "ReValidation.DynamisBridge.json")));
+    }
+
+    [Fact]
     public void LocalClientStructsProjectWiresOptionalClientStructsReference()
     {
         var root = RepoRoot.Find();
