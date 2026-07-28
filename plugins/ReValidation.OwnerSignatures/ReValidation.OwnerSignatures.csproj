@@ -8,12 +8,21 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <Import Project="..\local\LocalClientStructs.props" Condition="Exists('..\local\LocalClientStructs.props')" />
+
   <ItemGroup>
     <ProjectReference Include="..\ReValidation.Common\ReValidation.Common.csproj" />
     <Reference Include="FFXIVClientStructs" HintPath="$(DalamudLibPath)FFXIVClientStructs.dll" Private="false" />
     <Reference Include="Lumina" HintPath="$(DalamudLibPath)Lumina.dll" Private="false" />
     <Reference Include="Lumina.Excel" HintPath="$(DalamudLibPath)Lumina.Excel.dll" Private="false" />
     <Reference Include="Dalamud.Bindings.ImGui" HintPath="$(DalamudLibPath)Dalamud.Bindings.ImGui.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>ClientStructsProjectPath</_Parameter1>
+      <_Parameter2>$(ClientStructsProjectPath)</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>

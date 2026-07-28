@@ -3,6 +3,7 @@ using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using ReValidation.Common.Evidence;
+using ReValidation.Common.Discovery;
 using ReValidation.Common.Execution;
 using ReValidation.Common.Proof;
 using ReValidation.Common.UI;
@@ -14,6 +15,7 @@ using FFXIVClientStructs.FFXIV.Client.System.Framework;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using InteropGenerator.Runtime;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using Lumina.Excel.Sheets;
 
@@ -68,8 +70,8 @@ public sealed class Plugin : IDalamudPlugin
         var itemTooltipProbe = new ItemDetailTooltipProbe(GetItemDetailAddonAddress, GetItemDetailAgentAddress);
         var actionTooltipProbe = new ActionDetailTooltipProbe(GetActionDetailAddonAddress, GetActionDetailAgentAddress);
         branchRouteAdapter = new LocalBranchValidationRouteAdapter(
-            new LocalTooltipProofExecutor(itemTooltipProbe),
-            new LocalTooltipProofExecutor(actionTooltipProbe));
+            new LocalTooltipProofExecutor(itemTooltipProbe, new DalamudTooltipProofHookFactory(PluginServices.GameInteropProvider)),
+            new LocalTooltipProofExecutor(actionTooltipProbe, new DalamudTooltipProofHookFactory(PluginServices.GameInteropProvider)));
         var registry = LocalClientStructsScenarioComposition.CreateRegistry(
             new LocalClientStructsScenarioDependencies(
                 journalProbe,
@@ -89,7 +91,8 @@ public sealed class Plugin : IDalamudPlugin
             registry,
             runner,
             new ValidationScenarioContextFactory(evidenceRoot),
-            diagnosticsSink);
+            diagnosticsSink,
+            branchWorkflow: CreateBranchValidationWorkflow(evidenceRoot, branchRouteAdapter, buildMetadata.ProjectPath));
     }
 
     private static void InitializeLocalClientStructsRuntime(LocalClientStructsBuildMetadata buildMetadata)
@@ -101,6 +104,32 @@ public sealed class Plugin : IDalamudPlugin
         FFXIVClientStructs.Interop.Generated.Addresses.Register();
         Resolver.GetInstance.Resolve();
         PluginServices.PluginLog.Information("Initialized local ClientStructs resolver.");
+    }
+
+    private static BranchValidationWorkflow? CreateBranchValidationWorkflow(
+        string evidenceRoot,
+        IBranchValidationRouteAdapter routeAdapter,
+        string? projectPath)
+    {
+        if (string.IsNullOrWhiteSpace(projectPath) || !File.Exists(projectPath))
+            return null;
+
+        var checkoutRoot = ResolveCheckoutRoot(projectPath);
+        return checkoutRoot is null
+            ? null
+            : new BranchValidationWorkflow(
+                new ClientStructsGitDiffDiscoveryService(new GitProcessDiffReader(), new InteropBindingSourceParser()),
+                new ProofPlanBuilder(),
+                new BranchValidationRunner(new BranchJsonEvidenceWriter(new EvidencePathBuilder()), new BranchMarkdownEvidenceWriter(new EvidencePathBuilder())),
+                routeAdapter,
+                new ClientStructsDiscoveryOptions(checkoutRoot, DiscoveryMode.Diff, [TargetFamily.ItemTooltip, TargetFamily.ActionTooltip]),
+                evidenceRoot);
+    }
+
+    private static string? ResolveCheckoutRoot(string projectPath)
+    {
+        var projectFile = new FileInfo(projectPath);
+        return projectFile.Directory?.Parent?.FullName;
     }
 
     private void Draw() => windowSystem.Draw();

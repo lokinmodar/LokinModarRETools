@@ -1,6 +1,7 @@
 using ReValidation.Common.Abstractions;
 using ReValidation.Common.Execution;
 using ReValidation.Common.Models;
+using ReValidation.Common.Proof;
 
 namespace ReValidation.Common.UI;
 
@@ -16,6 +17,7 @@ public sealed class ValidationWindowController : IDisposable
     private ArmedScenarioRequest? armedScenarioRequest;
     private int disposed;
     private int pulseActive;
+    private readonly BranchValidationWorkflow? branchWorkflow;
 
     public ValidationWindowController(
         ValidationWindowState state,
@@ -23,7 +25,8 @@ public sealed class ValidationWindowController : IDisposable
         IValidationScenarioRunner runner,
         IScenarioExecutionContextFactory? contextFactory = null,
         IValidationDiagnosticsSink? diagnosticsSink = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        BranchValidationWorkflow? branchWorkflow = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(registry);
@@ -35,11 +38,31 @@ public sealed class ValidationWindowController : IDisposable
         this.runner = runner;
         this.contextFactory = contextFactory ?? new ValidationScenarioContextFactory(Path.GetTempPath());
         this.timeProvider = timeProvider ?? TimeProvider.System;
+        this.branchWorkflow = branchWorkflow;
     }
 
     public ValidationWindowState State { get; }
     public IReadOnlyCollection<IValidationScenario> Scenarios => registry.Scenarios;
     public bool CanArmSelectedScenario() => TryGetSelectedArmableScenario(out _);
+    public bool CanRunBranchValidation => branchWorkflow is not null;
+
+    public async Task RunTooltipBranchValidationAsync(CancellationToken cancellationToken)
+    {
+        if (branchWorkflow is null)
+            throw new InvalidOperationException("Branch validation is not configured.");
+        if (!runGate.Wait(0)) return;
+        State.SetRunning();
+        try
+        {
+            var catalog = await branchWorkflow.DiscoveryService.DiscoverAsync(branchWorkflow.DiscoveryOptions, cancellationToken);
+            var plan = branchWorkflow.PlanBuilder.Build(catalog, 4);
+            var report = await branchWorkflow.Runner.RunAsync(plan, branchWorkflow.RouteAdapter, branchWorkflow.EvidenceRoot, cancellationToken);
+            State.SetCompleted(report.IsSuccess ? "Passed" : "Failed", report.IsSuccess ? "Tooltip branch validation passed." : "Tooltip branch validation did not meet proof requirements.", report.Evidence?.Select(x => x.OutputPath).ToArray() ?? []);
+        }
+        catch (OperationCanceledException) { State.SetCompleted("Cancelled", string.Empty, []); }
+        catch (Exception) { State.SetCompleted("Failed", string.Empty, []); }
+        finally { runGate.Release(); }
+    }
 
     public async Task RunSelectedScenarioAsync(CancellationToken cancellationToken)
     {

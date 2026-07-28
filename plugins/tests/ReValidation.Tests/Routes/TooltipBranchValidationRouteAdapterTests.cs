@@ -1,5 +1,7 @@
 using ReValidation.Common.Discovery;
+using ReValidation.Common.Models;
 using ReValidation.Common.Proof;
+using ReValidation.Common.Scenarios;
 using ReValidation.LocalClientStructs.Runtime;
 using ReValidation.LocalClientStructs.Services;
 using ReValidation.OwnerSignatures.Services;
@@ -14,12 +16,25 @@ public sealed class TooltipBranchValidationRouteAdapterTests
     {
         var group = ProofGroupFactory.CreateItemTooltipGroup();
         var adapter = new LocalBranchValidationRouteAdapter(
-            new FakeLocalTooltipProofExecutor(TargetProofRecordFactory.PassedTooltip("AddonItemDetail.GenerateTooltip")),
-            new FakeLocalTooltipProofExecutor(TargetProofRecordFactory.PassedTooltip("AgentItemDetail.ReceiveEvent")));
+            new LocalTooltipProofExecutor(new FakeTooltipProbe(), new FakeTooltipProofHookFactory(observedHitCount: 1)),
+            new LocalTooltipProofExecutor(new FakeTooltipProbe(), new FakeTooltipProofHookFactory(observedHitCount: 1)));
 
         var report = await adapter.RunProofGroupAsync(group, requiredProofLevel: 4, CancellationToken.None);
 
         Assert.All(report.Targets, target => Assert.Equal("passed", target.Verdict));
+    }
+
+    [Fact]
+    public async Task LocalExecutor_Blocks_WhenTooltipHookDoesNotObserveACall()
+    {
+        var probe = new FakeTooltipProbe();
+        var report = await new LocalTooltipProofExecutor(probe, new FakeTooltipProofHookFactory(observedHitCount: 0))
+            .RunAsync(ProofGroupFactory.CreateItemTooltipGroup(), requiredProofLevel: 4, CancellationToken.None);
+
+        var target = Assert.Single(report.Targets);
+        Assert.Equal("not-observed", target.Verdict);
+        Assert.True(target.EffectRestored);
+        Assert.Equal(1, probe.RestoreCount);
     }
 
     [Fact]
@@ -34,21 +49,34 @@ public sealed class TooltipBranchValidationRouteAdapterTests
         Assert.Contains(report.Targets, target => target.Verdict == "blocked" && target.BlockingReason == "Signature resolution was not unique.");
     }
 
-    private sealed class FakeLocalTooltipProofExecutor(TargetProofRecord record) : ITooltipProofExecutor
+    private sealed class FakeTooltipProbe : ITooltipProbe
     {
-        public ValueTask<ProofGroupRunReport> RunAsync(ProofGroupDefinition group, int requiredProofLevel, CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new ProofGroupRunReport(group.GroupId, [record], "fake tooltip proof"));
+        public int RestoreCount { get; private set; }
+        public ValueTask<TooltipSnapshot> CaptureAsync(CancellationToken cancellationToken) => ValueTask.FromResult(new TooltipSnapshot("item", 1, ["ready"], "ready"));
+        public ValueTask<ScenarioOverrideTicket?> ApplySentinelOverrideAsync(string sentinel, CancellationToken cancellationToken) => ValueTask.FromResult<ScenarioOverrideTicket?>(new ScenarioOverrideTicket("applied", new()));
+        public ValueTask<ScenarioAssertResult?> AssertSentinelAsync(string sentinel, CancellationToken cancellationToken) => ValueTask.FromResult<ScenarioAssertResult?>(new ScenarioAssertResult(true, "asserted", []));
+        public ValueTask<ScenarioRestoreResult> RestoreAsync(CancellationToken cancellationToken)
+        {
+            RestoreCount++;
+            return ValueTask.FromResult(new ScenarioRestoreResult(true, "restored", []));
+        }
+    }
+
+    private sealed class FakeTooltipProofHookFactory(int observedHitCount) : ITooltipProofHookFactory
+    {
+        public ITooltipProofHook Create(string targetId) => new FakeTooltipProofHook(observedHitCount);
+    }
+
+    private sealed class FakeTooltipProofHook(int observedHitCount) : ITooltipProofHook
+    {
+        public int ObservedHitCount => observedHitCount;
+        public void Enable() { }
+        public void Dispose() { }
     }
 
     private sealed class FakeSignatureResolutionProvider(SignatureResolution resolution) : ISignatureResolutionProvider
     {
         public SignatureResolution GetResolution(string targetId) => resolution;
-    }
-
-    private static class TargetProofRecordFactory
-    {
-        public static TargetProofRecord PassedTooltip(string targetId) =>
-            new(targetId, "passed", 1, 0x1234, 1, true, true, true, null);
     }
 
     private static class ProofGroupFactory
@@ -64,6 +92,6 @@ public sealed class TooltipBranchValidationRouteAdapterTests
                 groupId,
                 cueFamily,
                 ProofProfile.DetourFunction,
-                [new DiscoveredTarget(targetId, "Addon", "GenerateTooltip", BindingKind.MemberFunction, "48 89", "Addon.cs", true, TargetFamily.ItemTooltip, cueFamily, ProofProfile.DetourFunction, 4)]);
+                [new DiscoveredTarget(targetId, "Addon", "GenerateTooltip", BindingKind.MemberFunction, "48 89", "Addon.cs", true, cueFamily is CueFamily.TooltipItemDetail ? TargetFamily.ItemTooltip : TargetFamily.ActionTooltip, cueFamily, ProofProfile.DetourFunction, 4)]);
     }
 }

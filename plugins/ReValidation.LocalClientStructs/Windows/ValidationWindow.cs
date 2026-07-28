@@ -31,6 +31,14 @@ public sealed class ValidationWindow : Window
         if (!string.IsNullOrWhiteSpace(controller.State.StatusDetailText))
             ImGui.TextWrapped(controller.State.StatusDetailText);
 
+        if (controller.CanRunBranchValidation)
+        {
+            ImGui.BeginDisabled(controller.State.IsBusy);
+            if (ImGui.Button("Run tooltip branch validation"))
+                _ = ObserveBranchValidationAsync();
+            ImGui.EndDisabled();
+        }
+
         var scenarios = controller.Scenarios.Where(scenario => scenario.Definition.SupportedRoutes.Contains(ValidationRoute.LocalClientStructs)).ToArray();
         var selectedScenario = scenarios.FirstOrDefault(scenario => scenario.Definition.Id == controller.State.SelectedScenarioId);
         var armableScenario = selectedScenario as IArmableValidationScenario;
@@ -101,6 +109,8 @@ public sealed class ValidationWindow : Window
             controller.State.SetCompleted("Failed", string.Empty, Array.Empty<string>());
         }
     }
+
+    private async Task ObserveBranchValidationAsync() => await controller.RunTooltipBranchValidationAsync(CancellationToken.None);
 
     private async Task ObserveArmPulseAsync()
     {

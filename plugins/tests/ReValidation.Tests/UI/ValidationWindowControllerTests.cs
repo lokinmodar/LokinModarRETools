@@ -1,8 +1,10 @@
 using System.Text.Json.Nodes;
 using ReValidation.Common.Abstractions;
+using ReValidation.Common.Discovery;
 using ReValidation.Common.Evidence;
 using ReValidation.Common.Execution;
 using ReValidation.Common.Models;
+using ReValidation.Common.Proof;
 using ReValidation.Common.UI;
 using Xunit;
 
@@ -26,6 +28,51 @@ public sealed class ValidationWindowControllerTests
         Assert.Equal("item tooltip captured", controller.State.StatusDetailText);
         Assert.Equal(2, controller.State.ArtifactPaths.Count);
         Assert.Contains(controller.State.ArtifactPaths, path => path.EndsWith(".md", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task RunTooltipBranchValidationAsync_PublishesStatusAndEvidence_WhenWorkflowConfigured()
+    {
+        var discoveryOptions = new ClientStructsDiscoveryOptions(@"C:\ffxivclientstructs", DiscoveryMode.Diff, [TargetFamily.ItemTooltip]);
+        var catalog = new DiscoveredTargetCatalog(
+            discoveryOptions,
+            [
+                new DiscoveredTarget(
+                    "AddonItemDetail.GenerateTooltip",
+                    "AddonItemDetail",
+                    "GenerateTooltip",
+                    BindingKind.MemberFunction,
+                    "48 89",
+                    "AddonItemDetail.cs",
+                    true,
+                    TargetFamily.ItemTooltip,
+                    CueFamily.TooltipItemDetail,
+                    ProofProfile.DetourFunction,
+                    4),
+            ],
+            []);
+        var branchRunner = new StubBranchRunner();
+        var controller = new ValidationWindowController(
+            state: new ValidationWindowState(),
+            registry: ValidationScenarioRegistry.ForTests(new StubScenario("journal.completed-entries")),
+            runner: new StubRunner(),
+            branchWorkflow: new BranchValidationWorkflow(
+                new StubDiscoveryService(catalog),
+                new ProofPlanBuilder(),
+                branchRunner,
+                new StubBranchRouteAdapter(ValidationRoute.LocalClientStructs),
+                discoveryOptions,
+                @"C:\evidence"));
+
+        Assert.True(controller.CanRunBranchValidation);
+
+        await controller.RunTooltipBranchValidationAsync(CancellationToken.None);
+
+        Assert.Equal("Passed", controller.State.StatusText);
+        Assert.Equal("Tooltip branch validation passed.", controller.State.StatusDetailText);
+        Assert.Equal(2, controller.State.ArtifactPaths.Count);
+        Assert.Equal(4, branchRunner.ObservedRequiredProofLevel);
+        Assert.Equal(ValidationRoute.LocalClientStructs, branchRunner.ObservedRoute);
     }
 
     [Fact]
@@ -233,6 +280,12 @@ public sealed class ValidationWindowControllerTests
         return controller;
     }
 
+    private sealed class StubDiscoveryService(DiscoveredTargetCatalog catalog) : IClientStructsDiscoveryService
+    {
+        public ValueTask<DiscoveredTargetCatalog> DiscoverAsync(ClientStructsDiscoveryOptions options, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(catalog);
+    }
+
     private sealed class StubRunner : IValidationScenarioRunner
     {
         public int RunCount { get; private set; }
@@ -301,6 +354,49 @@ public sealed class ValidationWindowControllerTests
                 ScenarioRunReport.Started(scenario.Definition, context.Route, context.Mode)
                     .WithPrecondition(new ScenarioPreconditionResult(false, reason))
                     .MarkBlocked());
+    }
+
+    private sealed class StubBranchRunner : IBranchValidationRunner
+    {
+        public ValidationRoute ObservedRoute { get; private set; }
+        public int ObservedRequiredProofLevel { get; private set; }
+
+        public ValueTask<BranchValidationRunReport> RunAsync(
+            BranchValidationPlan plan,
+            IBranchValidationRouteAdapter routeAdapter,
+            string evidenceRoot,
+            CancellationToken cancellationToken)
+        {
+            ObservedRoute = routeAdapter.Route;
+            ObservedRequiredProofLevel = plan.RequiredProofLevel;
+
+            var groups = plan.Groups
+                .Select(group => new ProofGroupRunReport(
+                    group.GroupId,
+                    group.Targets.Select(target => new TargetProofRecord(target.TargetId, "passed", 1, 0x1234, 1, true, true, true, null)).ToArray(),
+                    "ok"))
+                .ToArray();
+
+            return ValueTask.FromResult(
+                new BranchValidationRunReport(routeAdapter.Route, plan.RequiredProofLevel, groups)
+                {
+                    Evidence =
+                    [
+                        new EvidenceWriteResult("json", Path.Combine(evidenceRoot, "branch.json")),
+                        new EvidenceWriteResult("markdown", Path.Combine(evidenceRoot, "branch.md")),
+                    ],
+                });
+        }
+    }
+
+    private sealed class StubBranchRouteAdapter(ValidationRoute route) : IBranchValidationRouteAdapter
+    {
+        public ValidationRoute Route { get; } = route;
+
+        public ValueTask<ProofGroupRunReport> RunProofGroupAsync(
+            ProofGroupDefinition group,
+            int requiredProofLevel,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class StubScenario(string id) : IValidationScenario

@@ -2,9 +2,11 @@ using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using System.Reflection;
 using FFXIVClientStructs.FFXIV.Client.System.Framework;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using ReValidation.Common.Evidence;
+using ReValidation.Common.Discovery;
 using ReValidation.Common.Execution;
 using ReValidation.Common.Proof;
 using ReValidation.Common.UI;
@@ -68,10 +70,12 @@ public sealed class Plugin : IDalamudPlugin
         var resolutions = signatureResolver.ResolveAll(requirements);
         var itemTooltipProbe = new ItemDetailTooltipProbe(GetItemDetailAddonAddress, GetItemDetailAgentAddress);
         var actionTooltipProbe = new ActionDetailTooltipProbe(GetActionDetailAddonAddress, GetActionDetailAgentAddress);
+        var resolutionProvider = new ResolvedSignatureProvider(resolutions);
+        var hookFactory = new DalamudTooltipProofHookFactory(PluginServices.GameInteropProvider, resolutionProvider, (ulong)PluginServices.SigScanner.SearchBase);
         branchRouteAdapter = new OwnerBranchValidationRouteAdapter(
-            new ResolvedSignatureProvider(resolutions),
-            new OwnerTooltipProofExecutor(itemTooltipProbe),
-            new OwnerTooltipProofExecutor(actionTooltipProbe));
+            resolutionProvider,
+            new OwnerTooltipProofExecutor(itemTooltipProbe, hookFactory),
+            new OwnerTooltipProofExecutor(actionTooltipProbe, hookFactory));
         var registry = OwnerSignaturesScenarioComposition.CreateRegistry(
             new OwnerSignaturesScenarioDependencies(
                 journalProbe,
@@ -91,7 +95,8 @@ public sealed class Plugin : IDalamudPlugin
             registry,
             runner,
             new ValidationScenarioContextFactory(evidenceRoot),
-            diagnosticsSink);
+            diagnosticsSink,
+            branchWorkflow: CreateBranchValidationWorkflow(evidenceRoot, branchRouteAdapter, GetClientStructsProjectPath()));
     }
 
     private void Draw() => windowSystem.Draw();
@@ -115,6 +120,38 @@ public sealed class Plugin : IDalamudPlugin
     {
         var agent = Framework.Instance()->GetUIModule()->GetAgentModule()->GetAgentByInternalId(AgentId.ActionDetail);
         return (nint)agent;
+    }
+
+    private static BranchValidationWorkflow? CreateBranchValidationWorkflow(
+        string evidenceRoot,
+        IBranchValidationRouteAdapter routeAdapter,
+        string? projectPath)
+    {
+        if (string.IsNullOrWhiteSpace(projectPath) || !File.Exists(projectPath))
+            return null;
+
+        var checkoutRoot = ResolveCheckoutRoot(projectPath);
+        return checkoutRoot is null
+            ? null
+            : new BranchValidationWorkflow(
+                new ClientStructsGitDiffDiscoveryService(new GitProcessDiffReader(), new InteropBindingSourceParser()),
+                new ProofPlanBuilder(),
+                new BranchValidationRunner(new BranchJsonEvidenceWriter(new EvidencePathBuilder()), new BranchMarkdownEvidenceWriter(new EvidencePathBuilder())),
+                routeAdapter,
+                new ClientStructsDiscoveryOptions(checkoutRoot, DiscoveryMode.Diff, [TargetFamily.ItemTooltip, TargetFamily.ActionTooltip]),
+                evidenceRoot);
+    }
+
+    private static string? GetClientStructsProjectPath() =>
+        typeof(Plugin).Assembly
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute => string.Equals(attribute.Key, "ClientStructsProjectPath", StringComparison.Ordinal))
+            ?.Value;
+
+    private static string? ResolveCheckoutRoot(string projectPath)
+    {
+        var projectFile = new FileInfo(projectPath);
+        return projectFile.Directory?.Parent?.FullName;
     }
 
     private sealed class ResolvedSignatureProvider(IReadOnlyList<SignatureResolution> resolutions) : ISignatureResolutionProvider
