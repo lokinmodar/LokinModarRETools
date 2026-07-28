@@ -16,11 +16,11 @@ public sealed class BranchValidationRunner(
         ArgumentNullException.ThrowIfNull(routeAdapter);
         ArgumentException.ThrowIfNullOrWhiteSpace(evidenceRoot);
 
-        var groupReports = new List<ProofGroupRunReport>();
+        var groupReports = new List<(ProofGroupDefinition DispatchedGroup, ProofGroupRunReport ReturnedReport)>();
         foreach (var group in plan.Groups)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            groupReports.Add(await routeAdapter.RunProofGroupAsync(group, plan.RequiredProofLevel, cancellationToken));
+            groupReports.Add((group, await routeAdapter.RunProofGroupAsync(group, plan.RequiredProofLevel, cancellationToken)));
         }
 
         var report = BranchValidationRunReport.From(plan, routeAdapter.Route, groupReports);

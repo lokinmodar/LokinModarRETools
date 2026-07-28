@@ -78,14 +78,37 @@ public sealed class BranchValidationRunnerTests
         Assert.Contains(report.Targets, x => x.TargetId == "AddonItemDetail.GenerateTooltip" && x.Verdict == "not-proven");
     }
 
-    private static async Task<BranchValidationRunReport> RunAsync(BranchValidationPlan plan, ProofGroupRunReport proofReport) =>
+    [Fact]
+    public async Task RunAsync_FailsAggregateWhenValidProofGroupsAreReturnedInDispatchOrderSwap()
+    {
+        var plan = BranchValidationPlanFactory.CreateTwoTooltipGroupsPlan();
+        var report = await RunAsync(
+            plan,
+            new ProofGroupRunReport(
+                "tooltip.action-detail:detour-function",
+                [CreatePassedActionTooltipRecord()],
+                artifactSummary: "action tooltip group"),
+            new ProofGroupRunReport(
+                "tooltip.item-detail:detour-function",
+                [CreatePassedTooltipRecord()],
+                artifactSummary: "item tooltip group"));
+
+        Assert.False(report.IsSuccess);
+        Assert.Equal(2, report.Targets.Count(target => target.Verdict == "wrong-proof-group"));
+        Assert.Equal(2, report.Targets.Count(target => target.Verdict == "not-proven"));
+    }
+
+    private static async Task<BranchValidationRunReport> RunAsync(BranchValidationPlan plan, params ProofGroupRunReport[] proofReports) =>
         await new BranchValidationRunner(
                 new BranchJsonEvidenceWriter(new EvidencePathBuilder()),
                 new BranchMarkdownEvidenceWriter(new EvidencePathBuilder()))
-            .RunAsync(plan, new FakeBranchValidationRouteAdapter([proofReport]), Path.GetTempPath(), CancellationToken.None);
+            .RunAsync(plan, new FakeBranchValidationRouteAdapter(proofReports), Path.GetTempPath(), CancellationToken.None);
 
     private static TargetProofRecord CreatePassedTooltipRecord(bool effectRestored = true) =>
         new("AddonItemDetail.GenerateTooltip", "passed", matchCount: 1, rva: 0x1234, observedHitCount: 1, hookInstalled: true, effectApplied: true, effectRestored: effectRestored, blockingReason: null);
+
+    private static TargetProofRecord CreatePassedActionTooltipRecord() =>
+        new("AddonActionDetail.GenerateTooltip", "passed", matchCount: 1, rva: 0x2234, observedHitCount: 1, hookInstalled: true, effectApplied: true, effectRestored: true, blockingReason: null);
 
     private sealed class FakeBranchValidationRouteAdapter(IReadOnlyList<ProofGroupRunReport> proofReports) : IBranchValidationRouteAdapter
     {
@@ -107,6 +130,20 @@ public sealed class BranchValidationRunnerTests
             var options = new ClientStructsDiscoveryOptions(@"C:\repo", "upstream/main", DiscoveryMode.Diff, [TargetFamily.ItemTooltip], null);
             var group = new ProofGroupDefinition("tooltip.item-detail:detour-function", CueFamily.TooltipItemDetail, ProofProfile.DetourFunction, [target]);
             return new BranchValidationPlan(options, [target], [group], requiredProofLevel);
+        }
+
+        public static BranchValidationPlan CreateTwoTooltipGroupsPlan()
+        {
+            var itemTarget = new DiscoveredTarget(
+                "AddonItemDetail.GenerateTooltip", "AddonItemDetail", "GenerateTooltip", BindingKind.MemberFunction, "48 89", "AddonItemDetail.cs", true,
+                TargetFamily.ItemTooltip, CueFamily.TooltipItemDetail, ProofProfile.DetourFunction, 4);
+            var actionTarget = new DiscoveredTarget(
+                "AddonActionDetail.GenerateTooltip", "AddonActionDetail", "GenerateTooltip", BindingKind.MemberFunction, "48 8B", "AddonActionDetail.cs", true,
+                TargetFamily.ActionTooltip, CueFamily.TooltipActionDetail, ProofProfile.DetourFunction, 4);
+            var options = new ClientStructsDiscoveryOptions(@"C:\repo", "upstream/main", DiscoveryMode.Diff, [TargetFamily.ItemTooltip, TargetFamily.ActionTooltip], null);
+            var itemGroup = new ProofGroupDefinition("tooltip.item-detail:detour-function", CueFamily.TooltipItemDetail, ProofProfile.DetourFunction, [itemTarget]);
+            var actionGroup = new ProofGroupDefinition("tooltip.action-detail:detour-function", CueFamily.TooltipActionDetail, ProofProfile.DetourFunction, [actionTarget]);
+            return new BranchValidationPlan(options, [itemTarget, actionTarget], [itemGroup, actionGroup], 4);
         }
     }
 }

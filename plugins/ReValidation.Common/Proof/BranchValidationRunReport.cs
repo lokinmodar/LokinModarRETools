@@ -30,20 +30,19 @@ public sealed record BranchValidationRunReport
     public static BranchValidationRunReport From(
         BranchValidationPlan plan,
         ValidationRoute route,
-        IReadOnlyList<ProofGroupRunReport> groupReports)
+        IReadOnlyList<(ProofGroupDefinition DispatchedGroup, ProofGroupRunReport ReturnedReport)> groupReports)
     {
-        var plannedGroups = plan.Groups.ToDictionary(group => group.GroupId, StringComparer.Ordinal);
         var plannedTargets = plan.Targets.ToDictionary(target => target.TargetId, StringComparer.Ordinal);
         var matchedTargetIds = new HashSet<string>(StringComparer.Ordinal);
         var normalizedReports = new List<ProofGroupRunReport>();
 
-        foreach (var report in groupReports)
+        foreach (var (dispatchedGroup, report) in groupReports)
         {
-            var hasPlannedGroup = plannedGroups.TryGetValue(report.GroupId, out var plannedGroup);
             var normalizedTargets = new List<TargetProofRecord>();
             foreach (var target in report.Targets)
             {
-                if (!hasPlannedGroup || !plannedGroup!.Targets.Any(expected => expected.TargetId == target.TargetId))
+                if (!string.Equals(report.GroupId, dispatchedGroup.GroupId, StringComparison.Ordinal)
+                    || !dispatchedGroup.Targets.Any(expected => expected.TargetId == target.TargetId))
                 {
                     normalizedTargets.Add(NormalizeFailure(
                         target,
