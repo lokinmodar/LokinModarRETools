@@ -10,7 +10,7 @@ public sealed class EvidenceNoteWriterTests
         var session = new JournalProbeSession(
             new DateTimeOffset(2026, 7, 28, 12, 0, 0, TimeSpan.Zero),
             "ReValidation.DynamisBridge/0.1.0",
-            4,
+            new DynamisApiVersion(1, 7, 0x20),
             "ffxiv_dx11.exe sha256=example",
             [
                 new JournalAnchorRecord("addon", (nint)0x1000, "GameGui", "UI root"),
@@ -26,6 +26,7 @@ public sealed class EvidenceNoteWriterTests
         var markdown = File.ReadAllText(outputPath);
 
         Assert.Contains("provider", markdown, StringComparison.Ordinal);
+        Assert.Contains("Dynamis API: 1.7 (features 0x20)", markdown, StringComparison.Ordinal);
         Assert.Contains("Confidence: 95", markdown, StringComparison.Ordinal);
         Assert.Contains("HighValueForIda", markdown, StringComparison.Ordinal);
         Assert.Contains("Likely pre-UI container", markdown, StringComparison.Ordinal);
@@ -37,7 +38,7 @@ public sealed class EvidenceNoteWriterTests
         var session = new JournalProbeSession(
             new DateTimeOffset(2026, 7, 28, 12, 0, 0, TimeSpan.Zero),
             "ReValidation.DynamisBridge/0.1.0",
-            4,
+            new DynamisApiVersion(1, 7, 0),
             "ffxiv_dx11.exe sha256=example",
             [],
             []);

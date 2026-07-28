@@ -3,7 +3,7 @@ using ReValidation.DynamisBridge.Services;
 
 namespace ReValidation.DynamisBridge.UI;
 
-public sealed class JournalExplorerController
+public sealed class JournalExplorerController : IDisposable
 {
     private readonly JournalExplorerWindowState state;
     private readonly IDynamisAvailabilityService availabilityService;
@@ -35,6 +35,8 @@ public sealed class JournalExplorerController
         this.pluginVersion = pluginVersion;
         this.executableIdentityProvider = executableIdentityProvider;
         this.timeProvider = timeProvider ?? TimeProvider.System;
+        availabilityService.AvailabilityChanged += OnAvailabilityChanged;
+        ApplyAvailability();
     }
 
     public JournalExplorerWindowState State => state;
@@ -48,24 +50,40 @@ public sealed class JournalExplorerController
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+        var startedAtUtc = timeProvider.GetUtcNow();
         var anchors = anchorCollector.CaptureAnchors();
         var seeds = inspectionService.ExpandCandidates(anchors);
-        state.SetSession(anchors, ranker.Rank(seeds));
+        state.SetSession(startedAtUtc, anchors, ranker.Rank(seeds));
         return Task.CompletedTask;
     }
 
     public async Task ExportSessionNoteAsync(string outputRoot, CancellationToken cancellationToken)
     {
+        if (!state.HasActiveSession || state.SessionStartedAtUtc is not { } startedAtUtc)
+        {
+            state.SetExportFailed("A session note requires an active session.");
+            return;
+        }
+
         var session = new JournalProbeSession(
-            timeProvider.GetUtcNow(),
+            startedAtUtc,
             pluginVersion,
             availabilityService.Current.ApiVersion,
             executableIdentityProvider(),
             state.Anchors,
             state.Candidates);
-        var path = await noteWriter.WriteAsync(session, outputRoot, cancellationToken);
-        state.SetExport(path);
+        try
+        {
+            var path = await noteWriter.WriteAsync(session, outputRoot, cancellationToken);
+            state.SetExport(path);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            state.SetExportFailed($"The session note could not be written: {exception.Message}");
+        }
     }
+
+    public void ResetSession() => ApplyAvailability(forceReset: true);
 
     public void MarkSelectedCandidateDisposition(JournalCandidateDisposition disposition) =>
         state.SetCandidateDisposition(disposition);
@@ -73,12 +91,37 @@ public sealed class JournalExplorerController
     public bool InspectSelectedCandidateObject()
     {
         var candidate = state.Candidates.FirstOrDefault(entry => entry.CandidateId == state.SelectedCandidateId);
-        return candidate is not null && inspectionService.InspectObject(candidate.Address);
+        return candidate is not null && inspectionService.InspectObject(candidate.Address, candidate.CandidateId);
     }
 
-    public bool InspectSelectedCandidateRegion(nuint size)
+    public bool InspectSelectedCandidateRegion(uint size)
     {
         var candidate = state.Candidates.FirstOrDefault(entry => entry.CandidateId == state.SelectedCandidateId);
-        return candidate is not null && inspectionService.InspectRegion(candidate.Address, size);
+        return candidate is not null
+            && inspectionService.InspectRegion(candidate.Address, size, candidate.ClassName ?? "byte", candidate.CandidateId);
+    }
+
+    public bool DrawSelectedCandidatePointer()
+    {
+        var candidate = state.Candidates.FirstOrDefault(entry => entry.CandidateId == state.SelectedCandidateId);
+        return candidate is not null && inspectionService.DrawPointer(candidate.Address, candidate.CandidateId);
+    }
+
+    public void Dispose() => availabilityService.AvailabilityChanged -= OnAvailabilityChanged;
+
+    private void OnAvailabilityChanged() => ApplyAvailability();
+
+    private void ApplyAvailability(bool forceReset = false)
+    {
+        if (!availabilityService.IsReady)
+        {
+            state.SetBlocked(availabilityService.Current.StatusText);
+            return;
+        }
+
+        if (forceReset)
+            state.Reset(availabilityService.Current.StatusText);
+        else if (!state.HasActiveSession)
+            state.SetReady(availabilityService.Current.StatusText);
     }
 }

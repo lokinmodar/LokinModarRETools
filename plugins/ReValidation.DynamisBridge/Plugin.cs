@@ -2,6 +2,8 @@ using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Client.System.Framework;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using ReValidation.DynamisBridge.Commands;
 using ReValidation.DynamisBridge.Ipc;
 using ReValidation.DynamisBridge.Services;
@@ -17,21 +19,22 @@ public sealed class Plugin : IDalamudPlugin
     private readonly JournalExplorerWindow window;
     private readonly PluginCommandRegistrar commandRegistrar;
     private readonly DynamisApiClient dynamisApiClient;
+    private readonly JournalExplorerController controller;
 
     public Plugin(IDalamudPluginInterface pluginInterface, ICommandManager commandManager)
     {
         this.pluginInterface = pluginInterface;
         pluginInterface.Create<PluginServices>();
         var gateway = new DalamudDynamisIpcGateway(pluginInterface);
-        dynamisApiClient = new DynamisApiClient(gateway, minimumApiVersion: 4);
+        dynamisApiClient = new DynamisApiClient(gateway, requiredMajorVersion: 1, minimumMinorVersion: 7);
         dynamisApiClient.Refresh();
         var availabilityService = new DynamisAvailabilityService(dynamisApiClient);
         var exportRoot = Path.Combine(pluginInterface.GetPluginConfigDirectory(), "dynamis-bridge");
         var anchorCollector = new LiveJournalAnchorCollector(
             () => PluginServices.GameGui.GetAddonByName("Journal", 1).Address,
-            () => Array.Empty<nint>());
+            GetJournalAgentAddress);
         var inspectionService = new PointerInspectionService(dynamisApiClient);
-        var controller = new JournalExplorerController(
+        controller = new JournalExplorerController(
             new JournalExplorerWindowState(),
             availabilityService,
             anchorCollector,
@@ -55,6 +58,7 @@ public sealed class Plugin : IDalamudPlugin
         pluginInterface.UiBuilder.Draw -= Draw;
         pluginInterface.UiBuilder.OpenConfigUi -= OpenWindow;
         commandRegistrar.Dispose();
+        controller.Dispose();
         windowSystem.RemoveAllWindows();
         dynamisApiClient.Dispose();
     }
@@ -62,4 +66,10 @@ public sealed class Plugin : IDalamudPlugin
     private void Draw() => windowSystem.Draw();
 
     private void OpenWindow() => window.IsOpen = true;
+
+    private static unsafe nint GetJournalAgentAddress()
+    {
+        var agent = Framework.Instance()->GetUIModule()->GetAgentModule()->GetAgentByInternalId(AgentId.QuestJournal);
+        return (nint)agent;
+    }
 }

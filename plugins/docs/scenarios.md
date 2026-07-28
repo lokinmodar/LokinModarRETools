@@ -68,4 +68,4 @@ failure record while allowing later writers to produce any remaining artifact.
 
 ## Journal Exploration Via Dynamis Bridge
 
-The Dynamis bridge is exploration-only. It reads Journal UI anchors, ranks nearby pointer candidates, and delegates object or region inspection to Dynamis IPC. It does not mutate game state, install detours, send server traffic, or create proof-schema evidence.
+The Dynamis bridge is exploration-only. It captures the explicit Journal addon and `QuestJournal` agent anchors, ranks only those known pointers, and delegates object or region inspection to Dynamis IPC. It does not scan neighboring memory, mutate game state, install detours, send server traffic, or create proof-schema evidence.

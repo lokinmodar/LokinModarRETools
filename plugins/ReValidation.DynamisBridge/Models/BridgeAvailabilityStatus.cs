@@ -10,5 +10,5 @@ public enum BridgeAvailabilityStatus
 
 public sealed record DynamisAvailabilitySnapshot(
     BridgeAvailabilityStatus Status,
-    int? ApiVersion,
+    DynamisApiVersion? ApiVersion,
     string StatusText);

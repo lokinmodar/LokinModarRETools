@@ -16,7 +16,7 @@ Both plugins use the real `Dalamud.NET.Sdk` and require a local Dalamud developm
 
 ## Dynamis Bridge
 
-Install the `ReValidation.DynamisBridge` plugin, then install and enable `Dynamis`. Open the plugin configuration with `/revalidation-dynamis` and verify that its status line reaches `Ready` before arming a Journal session.
+Install the `ReValidation.DynamisBridge` plugin, then install and enable `Dynamis`. Open the plugin configuration with `/revalidation-dynamis` and verify that its status line reaches `Ready` with Dynamis API `1.7` or newer within major `1` before arming a Journal session. The bridge captures only the explicit Journal addon and `QuestJournal` agent anchors; it does not scan or expand neighboring memory.
 
 ## Local ClientStructs Route
 

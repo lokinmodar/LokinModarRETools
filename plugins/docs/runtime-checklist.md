@@ -109,8 +109,14 @@ Do not treat raw UI success alone as proof. The saved artifacts are the reproduc
 
 ## Dynamis Bridge Journal Session
 
-1. Load `ReValidation.DynamisBridge` and confirm its status is `Ready`.
-2. Open the Journal UI.
-3. Select `Arm Journal Session`.
-4. Inspect promising candidates and mark high-value candidates for IDA as appropriate.
-5. Select `Export Session Note` to save the local exploration note.
+The bridge captures only the explicit Journal addon and `QuestJournal` agent pointers. It does not expand neighboring pointers or create proof-schema evidence.
+
+1. Enable Dynamis and confirm the bridge reaches `Ready` with API `1.7` or newer within major `1`.
+2. Open Journal and select `Arm Journal Session`.
+3. Confirm both anchors display raw addresses when available.
+4. Select a candidate, render its Dynamis pointer, and use object or bounded region inspection.
+5. Apply `Discarded`, `Promising`, or `HighValueForIda`.
+6. Export the active session note and confirm the window reports `Exported`.
+7. Use `Reset Session` before another capture.
+
+If Dynamis unloads, confirm the armed anchors and candidates are cleared and the window reports `Blocked`.

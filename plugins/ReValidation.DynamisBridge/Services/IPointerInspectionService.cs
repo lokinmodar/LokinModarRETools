@@ -5,7 +5,7 @@ namespace ReValidation.DynamisBridge.Services;
 public interface IPointerInspectionService
 {
     IReadOnlyList<JournalCandidateSeed> ExpandCandidates(IReadOnlyList<JournalAnchorRecord> anchors);
-    bool InspectObject(nint address);
-    bool InspectRegion(nint address, nuint size);
-    bool DrawPointer(string label, nint address);
+    bool InspectObject(nint address, string? name);
+    bool InspectRegion(nint address, uint size, string typeName, string? name);
+    bool DrawPointer(nint address, string? name);
 }

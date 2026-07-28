@@ -8,13 +8,16 @@ public sealed class EvidenceNoteWriter(TimeProvider timeProvider)
     {
         Directory.CreateDirectory(outputRoot);
         var path = Path.Combine(outputRoot, $"journal-session-{timeProvider.GetUtcNow():yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.md");
+        var dynamisApi = session.DynamisApiVersion is { } version
+            ? $"{version} (features 0x{version.FeatureFlags:X})"
+            : "unknown";
         var lines = new List<string>
         {
             "# Journal Session Note",
             string.Empty,
             $"Started: {session.StartedAtUtc:O}",
             $"Plugin: {session.PluginVersion}",
-            $"Dynamis API: {session.DynamisApiVersion?.ToString() ?? "unknown"}",
+            $"Dynamis API: {dynamisApi}",
             $"Executable: {session.ExecutableIdentity ?? "unknown"}",
             string.Empty,
             "## Anchors",

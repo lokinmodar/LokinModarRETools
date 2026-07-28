@@ -20,13 +20,13 @@ public sealed class PointerInspectionServiceTests
     private sealed class FakeDynamisApiClient : IDynamisApiClient
     {
         public event Action? AvailabilityChanged;
-        public DynamisAvailabilitySnapshot Current { get; } = new(BridgeAvailabilityStatus.Ready, 4, "Dynamis API 4 is ready.");
+        public DynamisAvailabilitySnapshot Current { get; } = new(BridgeAvailabilityStatus.Ready, new DynamisApiVersion(1, 7, 0), "Dynamis API 1.7 is ready.");
         public void Refresh() => AvailabilityChanged?.Invoke();
-        public bool InspectObject(nint address) => true;
-        public bool InspectRegion(nint address, nuint size) => true;
-        public string? GetClassName(nint address) => "AtkUnitBase";
-        public bool IsInstanceOf(nint address, string className) => false;
-        public bool DrawPointer(string label, nint address) => true;
+        public bool InspectObject(nint address, object? @class = null, string? name = null) => true;
+        public bool InspectRegion(nint address, uint size, string typeName, uint typeTemplateId = 0, uint classKindId = 0, string? name = null) => true;
+        public (string Name, Type? Type, uint Size, uint Displacement)? GetClass(nint pointer) => ("AtkUnitBase", null, 0, 0);
+        public (bool IsInstance, uint Displacement)? IsInstanceOf(nint pointer, string? className, Type? type) => null;
+        public bool DrawPointer(nint pointer, Func<object?>? @class, Func<string?>? name, string? customText, ulong flags, System.Numerics.Vector2 size) => true;
         public void Dispose() { }
     }
 }

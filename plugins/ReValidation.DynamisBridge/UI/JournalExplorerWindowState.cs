@@ -10,6 +10,14 @@ public sealed class JournalExplorerWindowState
     public IReadOnlyList<JournalCandidateRecord> Candidates { get; private set; } = Array.Empty<JournalCandidateRecord>();
     public string? SelectedCandidateId { get; private set; }
     public string? LastExportPath { get; private set; }
+    public DateTimeOffset? SessionStartedAtUtc { get; private set; }
+    public bool HasActiveSession => SessionStartedAtUtc.HasValue;
+
+    public void SetReady(string detail)
+    {
+        StatusText = "Ready";
+        StatusDetailText = detail;
+    }
 
     public void SetBlocked(string detail)
     {
@@ -18,15 +26,32 @@ public sealed class JournalExplorerWindowState
         Anchors = Array.Empty<JournalAnchorRecord>();
         Candidates = Array.Empty<JournalCandidateRecord>();
         SelectedCandidateId = null;
+        LastExportPath = null;
+        SessionStartedAtUtc = null;
     }
 
-    public void SetSession(IReadOnlyList<JournalAnchorRecord> anchors, IReadOnlyList<JournalCandidateRecord> candidates)
+    public void SetSession(
+        DateTimeOffset startedAtUtc,
+        IReadOnlyList<JournalAnchorRecord> anchors,
+        IReadOnlyList<JournalCandidateRecord> candidates)
     {
         StatusText = "Armed";
         StatusDetailText = "Journal session captured.";
         Anchors = anchors;
         Candidates = candidates;
         SelectedCandidateId = candidates.FirstOrDefault()?.CandidateId;
+        LastExportPath = null;
+        SessionStartedAtUtc = startedAtUtc;
+    }
+
+    public void Reset(string detail)
+    {
+        Anchors = Array.Empty<JournalAnchorRecord>();
+        Candidates = Array.Empty<JournalCandidateRecord>();
+        SelectedCandidateId = null;
+        LastExportPath = null;
+        SessionStartedAtUtc = null;
+        SetReady(detail);
     }
 
     public void SetExport(string path)
@@ -34,6 +59,13 @@ public sealed class JournalExplorerWindowState
         LastExportPath = path;
         StatusText = "Exported";
         StatusDetailText = path;
+    }
+
+    public void SetExportFailed(string detail)
+    {
+        LastExportPath = null;
+        StatusText = "Export Failed";
+        StatusDetailText = detail;
     }
 
     public void SetSelectedCandidate(string candidateId) => SelectedCandidateId = candidateId;

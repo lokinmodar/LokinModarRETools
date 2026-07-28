@@ -267,26 +267,22 @@ Flow:
 
 ## Journal Anchor Strategy
 
-The first version should not guess broadly across memory. It should start from
-known runtime anchors and walk only a narrow local neighborhood.
+The first version does not guess broadly across memory. It starts from two
+explicit runtime anchors and does not dereference neighboring pointer slots.
 
-Anchor sources may include:
+Anchor sources:
 
 - Journal addon pointer
-- Journal-related agent pointer
-- Immediate child pointers reachable from those anchors
-- Candidate arrays or pointer-bearing fields already suspected from prior
-  RE work
-- Pointers surfaced by temporary Journal probes already present in the local
-  validation codebase
+- `AgentId.QuestJournal` agent pointer
 
-The bridge prefers bounded traversal:
+The public Dynamis IPC contract does not expose candidate expansion. Therefore
+the first delivery ranks only these explicit anchors. Additional candidates may
+be added later only as named, evidence-backed anchor providers or through a new
+public Dynamis capability; the bridge must not emulate expansion with direct
+process-memory reads.
 
-- direct fields
-- small fixed neighborhoods
-- explicit candidate pointers already observed in prior RE work
-
-The bridge does not attempt a generic heap scan or broad memory crawl.
+The bridge does not attempt field traversal, a generic heap scan, or a broad
+memory crawl.
 
 ## Candidate Ranking
 

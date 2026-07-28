@@ -1,3 +1,4 @@
+using System.Numerics;
 using ReValidation.DynamisBridge.Models;
 
 namespace ReValidation.DynamisBridge.Services;
@@ -14,13 +15,17 @@ public sealed class PointerInspectionService(IDynamisApiClient apiClient) : IPoi
             .ToArray();
     }
 
-    public bool InspectObject(nint address) => apiClient.InspectObject(address);
-    public bool InspectRegion(nint address, nuint size) => apiClient.InspectRegion(address, size);
-    public bool DrawPointer(string label, nint address) => apiClient.DrawPointer(label, address);
+    public bool InspectObject(nint address, string? name) => apiClient.InspectObject(address, name: name);
+
+    public bool InspectRegion(nint address, uint size, string typeName, string? name) =>
+        apiClient.InspectRegion(address, size, typeName, name: name);
+
+    public bool DrawPointer(nint address, string? name) =>
+        apiClient.DrawPointer(address, null, () => name, null, 0, Vector2.Zero);
 
     private JournalCandidateSeed CreateSeed(string anchorId, nint address, string role)
     {
-        var className = apiClient.GetClassName(address);
+        var className = apiClient.GetClass(address)?.Name;
         var looksLikeLeafTextNode = className?.Contains("TextNode", StringComparison.OrdinalIgnoreCase) == true;
         return new JournalCandidateSeed(
             $"candidate-{address:X}",

@@ -20,6 +20,26 @@
 - No memory patching, live mutation, or UI overrides.
 - No authoritative validation evidence in the `ReValidation` proof schema.
 - No generic support for every addon or agent in the game.
+
+### Authoritative Dynamis IPC Contract
+
+The bridge must bind these callgates exactly. Dynamis currently advertises API `(1, 7, 0)`, represented by
+`DynamisApiVersion(uint MajorVersion, uint MinorVersion, ulong FeatureFlags)`. Compatibility requires major
+version `1` and minor version `7` or newer within major `1`.
+
+- `Dynamis.GetApiVersion`: `() -> (uint MajorVersion, uint MinorVersion, ulong FeatureFlags)`
+- `Dynamis.ApiInitialized`: `(uint apiMajorVersion, uint apiMinorVersion, ulong apiFeatureFlags, Version pluginVersion) -> event`
+- `Dynamis.ApiDisposing`: `() -> event`
+- `Dynamis.InspectObject.V1`: `(nint address) -> void`
+- `Dynamis.InspectObject.V2`: `(nint address, string? name) -> void`
+- `Dynamis.InspectObject.V3`: `(nint address, object? @class, string? name) -> void`
+- `Dynamis.InspectRegion.V2`: `(nint address, uint size, string typeName, uint typeTemplateId, uint classKindId, string? name) -> void`
+- `Dynamis.GetClass.V1`: `(nint pointer) -> (string Name, Type? Type, uint Size, uint Displacement)`
+- `Dynamis.IsInstanceOf.V1`: `(nint pointer, string? className, Type? type) -> (bool IsInstance, uint Displacement)`
+- `Dynamis.ImGuiDrawPointer.V4`: `(nint pointer, Func<object?>? @class, Func<string?>? name, string? customText, ulong flags, Vector2 size) -> void`
+
+The gateway may return `bool`/nullable values from `Try*` wrappers to report `IpcNotReadyError`, but the
+underlying `GetIpcSubscriber<...>` type arguments and invocation arguments must match this ABI.
 - No automated `old exe -> new exe` binary diff workflows.
 - Keep exploration separate from proof.
 - Nothing in the bridge becomes a `ClientStructs` declaration or an upstream conclusion by itself.
@@ -85,12 +105,10 @@
   Interface for collecting live Journal anchor pointers.
 - `plugins/ReValidation.DynamisBridge/Services/LiveJournalAnchorCollector.cs`
   Journal anchor collector backed by live addon pointers and optional known candidates.
-- `plugins/ReValidation.DynamisBridge/Services/NeighborPointerEnumerator.cs`
-  Small bounded pointer-neighborhood enumerator used to derive candidate addresses from anchors.
 - `plugins/ReValidation.DynamisBridge/Services/IPointerInspectionService.cs`
   Interface for class lookup, instance checks, object inspection, region inspection, and candidate expansion.
 - `plugins/ReValidation.DynamisBridge/Services/PointerInspectionService.cs`
-  Runtime implementation over `DynamisApiClient` and `NeighborPointerEnumerator`.
+  Runtime implementation over `DynamisApiClient`; candidate expansion is limited to explicit anchors.
 - `plugins/ReValidation.DynamisBridge/Services/JournalCandidateRanker.cs`
   Ranking and classification logic.
 - `plugins/ReValidation.DynamisBridge/Services/EvidenceNoteWriter.cs`
@@ -339,7 +357,7 @@ git commit -m "feat: scaffold dynamis bridge plugin"
   - `public sealed class Plugin : IDalamudPlugin`
 - Produces:
   - `public enum BridgeAvailabilityStatus { Unavailable, Incompatible, Ready, SessionActive }`
-  - `public sealed record DynamisAvailabilitySnapshot(BridgeAvailabilityStatus Status, int? ApiVersion, string StatusText);`
+  - `public sealed record DynamisAvailabilitySnapshot(BridgeAvailabilityStatus Status, DynamisApiVersion? ApiVersion, string StatusText);`
   - `public interface IDynamisIpcGateway : IDisposable`
   - `public interface IDynamisApiClient : IDisposable`
   - `public interface IDynamisAvailabilityService`
@@ -353,36 +371,38 @@ public sealed class DynamisApiClientTests
     [Fact]
     public void Refresh_WhenGatewayHasSupportedApiVersion_PublishesReady()
     {
-        var gateway = new FakeDynamisIpcGateway(apiVersion: 4);
-        using var client = new DynamisApiClient(gateway, minimumApiVersion: 4);
+        var gateway = new FakeDynamisIpcGateway(apiVersion: (1, 7, 0));
+        using var client = new DynamisApiClient(gateway, requiredMajorVersion: 1, minimumMinorVersion: 7);
 
         client.Refresh();
 
         Assert.Equal(BridgeAvailabilityStatus.Ready, client.Current.Status);
-        Assert.Equal(4, client.Current.ApiVersion);
+        Assert.Equal(new DynamisApiVersion(1, 7, 0), client.Current.ApiVersion);
     }
 
     [Fact]
     public void Refresh_WhenGatewayHasNoApiVersion_PublishesUnavailable()
     {
         var gateway = new FakeDynamisIpcGateway(apiVersion: null);
-        using var client = new DynamisApiClient(gateway, minimumApiVersion: 4);
+        using var client = new DynamisApiClient(gateway, requiredMajorVersion: 1, minimumMinorVersion: 7);
 
         client.Refresh();
 
         Assert.Equal(BridgeAvailabilityStatus.Unavailable, client.Current.Status);
     }
 
-    private sealed class FakeDynamisIpcGateway(int? apiVersion) : IDynamisIpcGateway
+    private sealed class FakeDynamisIpcGateway((uint MajorVersion, uint MinorVersion, ulong FeatureFlags)? apiVersion) : IDynamisIpcGateway
     {
-        public int? TryGetApiVersion() => apiVersion;
-        public IDisposable SubscribeApiInitialized(Action handler) => new NullSubscription();
+        public (uint MajorVersion, uint MinorVersion, ulong FeatureFlags)? TryGetApiVersion() => apiVersion;
+        public IDisposable SubscribeApiInitialized(Action<uint, uint, ulong, Version> handler) => new NullSubscription();
         public IDisposable SubscribeApiDisposing(Action handler) => new NullSubscription();
         public bool TryInspectObject(nint address) => true;
-        public bool TryInspectRegion(nint address, nuint size) => true;
-        public string? TryGetClassName(nint address) => null;
-        public bool TryIsInstanceOf(nint address, string className) => false;
-        public bool TryDrawPointer(string label, nint address) => true;
+        public bool TryInspectObject(nint address, string? name) => true;
+        public bool TryInspectObject(nint address, object? @class, string? name) => true;
+        public bool TryInspectRegion(nint address, uint size, string typeName, uint typeTemplateId, uint classKindId, string? name) => true;
+        public (string Name, Type? Type, uint Size, uint Displacement)? TryGetClass(nint pointer) => null;
+        public (bool IsInstance, uint Displacement)? TryIsInstanceOf(nint pointer, string? className, Type? type) => null;
+        public bool TryDrawPointer(nint pointer, Func<object?>? @class, Func<string?>? name, string? customText, ulong flags, Vector2 size) => true;
         public void Dispose() { }
     }
 
@@ -400,11 +420,11 @@ public sealed class DynamisAvailabilityServiceTests
     public void Snapshot_WhenClientIsIncompatible_UsesBlockedStatusText()
     {
         var client = new StubDynamisApiClient(
-            new DynamisAvailabilitySnapshot(BridgeAvailabilityStatus.Incompatible, 3, "Dynamis API 3 is too old."));
+            new DynamisAvailabilitySnapshot(BridgeAvailabilityStatus.Incompatible, new DynamisApiVersion(1, 6, 0), "Dynamis API 1.6 is incompatible."));
         var service = new DynamisAvailabilityService(client);
 
         Assert.False(service.IsReady);
-        Assert.Equal("Dynamis API 3 is too old.", service.Current.StatusText);
+        Assert.Equal("Dynamis API 1.6 is incompatible.", service.Current.StatusText);
     }
 
     private sealed class StubDynamisApiClient(DynamisAvailabilitySnapshot snapshot) : IDynamisApiClient
@@ -412,11 +432,11 @@ public sealed class DynamisAvailabilityServiceTests
         public event Action? AvailabilityChanged;
         public DynamisAvailabilitySnapshot Current { get; private set; } = snapshot;
         public void Refresh() => AvailabilityChanged?.Invoke();
-        public bool InspectObject(nint address) => true;
-        public bool InspectRegion(nint address, nuint size) => true;
-        public string? GetClassName(nint address) => null;
-        public bool IsInstanceOf(nint address, string className) => false;
-        public bool DrawPointer(string label, nint address) => true;
+        public bool InspectObject(nint address, object? @class = null, string? name = null) => true;
+        public bool InspectRegion(nint address, uint size, string typeName, uint typeTemplateId = 0, uint classKindId = 0, string? name = null) => true;
+        public (string Name, Type? Type, uint Size, uint Displacement)? GetClass(nint pointer) => null;
+        public (bool IsInstance, uint Displacement)? IsInstanceOf(nint pointer, string? className, Type? type) => null;
+        public bool DrawPointer(nint pointer, Func<object?>? @class, Func<string?>? name, string? customText, ulong flags, Vector2 size) => true;
         public void Dispose() { }
     }
 }
@@ -444,7 +464,7 @@ public enum BridgeAvailabilityStatus
 
 public sealed record DynamisAvailabilitySnapshot(
     BridgeAvailabilityStatus Status,
-    int? ApiVersion,
+    DynamisApiVersion? ApiVersion,
     string StatusText);
 ```
 
@@ -455,14 +475,16 @@ namespace ReValidation.DynamisBridge.Ipc;
 
 public interface IDynamisIpcGateway : IDisposable
 {
-    int? TryGetApiVersion();
-    IDisposable SubscribeApiInitialized(Action handler);
+    (uint MajorVersion, uint MinorVersion, ulong FeatureFlags)? TryGetApiVersion();
+    IDisposable SubscribeApiInitialized(Action<uint, uint, ulong, Version> handler);
     IDisposable SubscribeApiDisposing(Action handler);
     bool TryInspectObject(nint address);
-    bool TryInspectRegion(nint address, nuint size);
-    string? TryGetClassName(nint address);
-    bool TryIsInstanceOf(nint address, string className);
-    bool TryDrawPointer(string label, nint address);
+    bool TryInspectObject(nint address, string? name);
+    bool TryInspectObject(nint address, object? @class, string? name);
+    bool TryInspectRegion(nint address, uint size, string typeName, uint typeTemplateId, uint classKindId, string? name);
+    (string Name, Type? Type, uint Size, uint Displacement)? TryGetClass(nint pointer);
+    (bool IsInstance, uint Displacement)? TryIsInstanceOf(nint pointer, string? className, Type? type);
+    bool TryDrawPointer(nint pointer, Func<object?>? @class, Func<string?>? name, string? customText, ulong flags, Vector2 size);
 }
 ```
 
@@ -480,36 +502,52 @@ public sealed class DalamudDynamisIpcGateway : IDynamisIpcGateway
         this.pluginInterface = pluginInterface;
     }
 
-    public int? TryGetApiVersion() =>
-        pluginInterface.GetIpcSubscriber<int>("Dynamis.GetApiVersion").InvokeFunc();
+    public (uint MajorVersion, uint MinorVersion, ulong FeatureFlags)? TryGetApiVersion() =>
+        pluginInterface.GetIpcSubscriber<(uint, uint, ulong)>("Dynamis.GetApiVersion").InvokeFunc();
 
-    public IDisposable SubscribeApiInitialized(Action handler) =>
-        pluginInterface.GetIpcSubscriber("Dynamis.ApiInitialized").Subscribe(handler);
+    public IDisposable SubscribeApiInitialized(Action<uint, uint, ulong, Version> handler) =>
+        Subscribe(pluginInterface.GetIpcSubscriber<uint, uint, ulong, Version, object?>("Dynamis.ApiInitialized"), handler);
 
     public IDisposable SubscribeApiDisposing(Action handler) =>
         pluginInterface.GetIpcSubscriber("Dynamis.ApiDisposing").Subscribe(handler);
 
     public bool TryInspectObject(nint address)
     {
-        pluginInterface.GetIpcSubscriber<nint, object?>("Dynamis.InspectObject.V3").InvokeAction(address);
+        pluginInterface.GetIpcSubscriber<nint, object?>("Dynamis.InspectObject.V1").InvokeAction(address);
         return true;
     }
 
-    public bool TryInspectRegion(nint address, nuint size)
+    public bool TryInspectObject(nint address, string? name)
     {
-        pluginInterface.GetIpcSubscriber<nint, nuint, object?>("Dynamis.InspectRegion.V2").InvokeAction(address, size);
+        pluginInterface.GetIpcSubscriber<nint, string?, object?>("Dynamis.InspectObject.V2").InvokeAction(address, name);
         return true;
     }
 
-    public string? TryGetClassName(nint address) =>
-        pluginInterface.GetIpcSubscriber<nint, string?>("Dynamis.GetClass.V1").InvokeFunc(address);
-
-    public bool TryIsInstanceOf(nint address, string className) =>
-        pluginInterface.GetIpcSubscriber<nint, string, bool>("Dynamis.IsInstanceOf.V1").InvokeFunc(address, className);
-
-    public bool TryDrawPointer(string label, nint address)
+    public bool TryInspectObject(nint address, object? @class, string? name)
     {
-        pluginInterface.GetIpcSubscriber<string, nint, bool>("Dynamis.ImGuiDrawPointer.V4").InvokeFunc(label, address);
+        pluginInterface.GetIpcSubscriber<nint, object?, string?, object?>("Dynamis.InspectObject.V3")
+            .InvokeAction(address, @class, name);
+        return true;
+    }
+
+    public bool TryInspectRegion(nint address, uint size, string typeName, uint typeTemplateId, uint classKindId, string? name)
+    {
+        pluginInterface.GetIpcSubscriber<nint, uint, string, uint, uint, string?, object?>("Dynamis.InspectRegion.V2")
+            .InvokeAction(address, size, typeName, typeTemplateId, classKindId, name);
+        return true;
+    }
+
+    public (string Name, Type? Type, uint Size, uint Displacement)? TryGetClass(nint pointer) =>
+        pluginInterface.GetIpcSubscriber<nint, (string, Type?, uint, uint)>("Dynamis.GetClass.V1").InvokeFunc(pointer);
+
+    public (bool IsInstance, uint Displacement)? TryIsInstanceOf(nint pointer, string? className, Type? type) =>
+        pluginInterface.GetIpcSubscriber<nint, string?, Type?, (bool, uint)>("Dynamis.IsInstanceOf.V1")
+            .InvokeFunc(pointer, className, type);
+
+    public bool TryDrawPointer(nint pointer, Func<object?>? @class, Func<string?>? name, string? customText, ulong flags, Vector2 size)
+    {
+        pluginInterface.GetIpcSubscriber<nint, Func<object?>?, Func<string?>?, string?, ulong, Vector2, object?>("Dynamis.ImGuiDrawPointer.V4")
+            .InvokeAction(pointer, @class, name, customText, flags, size);
         return true;
     }
 
@@ -529,15 +567,16 @@ public interface IDynamisApiClient : IDisposable
     event Action? AvailabilityChanged;
     DynamisAvailabilitySnapshot Current { get; }
     void Refresh();
-    bool InspectObject(nint address);
-    bool InspectRegion(nint address, nuint size);
-    string? GetClassName(nint address);
-    bool IsInstanceOf(nint address, string className);
-    bool DrawPointer(string label, nint address);
+    bool InspectObject(nint address, object? @class = null, string? name = null);
+    bool InspectRegion(nint address, uint size, string typeName, uint typeTemplateId = 0, uint classKindId = 0, string? name = null);
+    (string Name, Type? Type, uint Size, uint Displacement)? GetClass(nint pointer);
+    (bool IsInstance, uint Displacement)? IsInstanceOf(nint pointer, string? className, Type? type);
+    bool DrawPointer(nint pointer, Func<object?>? @class, Func<string?>? name, string? customText, ulong flags, Vector2 size);
 }
 
 public interface IDynamisAvailabilityService
 {
+    event Action? AvailabilityChanged;
     DynamisAvailabilitySnapshot Current { get; }
     bool IsReady { get; }
 }
@@ -545,16 +584,18 @@ public interface IDynamisAvailabilityService
 public sealed class DynamisApiClient : IDynamisApiClient
 {
     private readonly IDynamisIpcGateway gateway;
-    private readonly int minimumApiVersion;
+    private readonly uint requiredMajorVersion;
+    private readonly uint minimumMinorVersion;
     private readonly IDisposable initializedSubscription;
     private readonly IDisposable disposingSubscription;
 
-    public DynamisApiClient(IDynamisIpcGateway gateway, int minimumApiVersion)
+    public DynamisApiClient(IDynamisIpcGateway gateway, uint requiredMajorVersion, uint minimumMinorVersion)
     {
         this.gateway = gateway;
-        this.minimumApiVersion = minimumApiVersion;
-        initializedSubscription = gateway.SubscribeApiInitialized(Refresh);
-        disposingSubscription = gateway.SubscribeApiDisposing(Refresh);
+        this.requiredMajorVersion = requiredMajorVersion;
+        this.minimumMinorVersion = minimumMinorVersion;
+        initializedSubscription = gateway.SubscribeApiInitialized(PublishInitialized);
+        disposingSubscription = gateway.SubscribeApiDisposing(PublishUnavailable);
         Current = new DynamisAvailabilitySnapshot(BridgeAvailabilityStatus.Unavailable, null, "Dynamis is unavailable.");
     }
 
@@ -564,20 +605,13 @@ public sealed class DynamisApiClient : IDynamisApiClient
     public void Refresh()
     {
         var version = gateway.TryGetApiVersion();
-        Current = version switch
-        {
-            null => new DynamisAvailabilitySnapshot(BridgeAvailabilityStatus.Unavailable, null, "Dynamis is unavailable."),
-            var resolved when resolved < minimumApiVersion => new DynamisAvailabilitySnapshot(BridgeAvailabilityStatus.Incompatible, version, $"Dynamis API {version} is too old."),
-            _ => new DynamisAvailabilitySnapshot(BridgeAvailabilityStatus.Ready, version, $"Dynamis API {version} is ready."),
-        };
+        Current = MapVersion(version);
         AvailabilityChanged?.Invoke();
     }
 
-    public bool InspectObject(nint address) => gateway.TryInspectObject(address);
-    public bool InspectRegion(nint address, nuint size) => gateway.TryInspectRegion(address, size);
-    public string? GetClassName(nint address) => gateway.TryGetClassName(address);
-    public bool IsInstanceOf(nint address, string className) => gateway.TryIsInstanceOf(address, className);
-    public bool DrawPointer(string label, nint address) => gateway.TryDrawPointer(label, address);
+    // PublishInitialized maps the event's major/minor/feature payload directly.
+    // PublishUnavailable never re-queries GetApiVersion while Dynamis is disposing.
+    // Inspection members forward every argument from the authoritative contract above.
 
     public void Dispose()
     {
@@ -791,7 +825,7 @@ namespace ReValidation.DynamisBridge.Models;
 public sealed record JournalProbeSession(
     DateTimeOffset StartedAtUtc,
     string PluginVersion,
-    int? DynamisApiVersion,
+    DynamisApiVersion? DynamisApiVersion,
     string? ExecutableIdentity,
     IReadOnlyList<JournalAnchorRecord> Anchors,
     IReadOnlyList<JournalCandidateRecord> Candidates);
@@ -861,13 +895,16 @@ public sealed class EvidenceNoteWriter(TimeProvider timeProvider)
     {
         Directory.CreateDirectory(outputRoot);
         var path = Path.Combine(outputRoot, $"journal-session-{timeProvider.GetUtcNow():yyyyMMdd-HHmmss}.md");
+        var dynamisApi = session.DynamisApiVersion is { } version
+            ? $"{version} (features 0x{version.FeatureFlags:X})"
+            : "unknown";
         var lines = new List<string>
         {
             "# Journal Session Note",
             string.Empty,
             $"Started: {session.StartedAtUtc:O}",
             $"Plugin: {session.PluginVersion}",
-            $"Dynamis API: {session.DynamisApiVersion?.ToString() ?? "unknown"}",
+            $"Dynamis API: {dynamisApi}",
             $"Executable: {session.ExecutableIdentity ?? "unknown"}",
             string.Empty,
             "## Anchors",
@@ -922,7 +959,6 @@ git commit -m "feat: add journal candidate ranking and note export"
 **Files:**
 - Create: `plugins/ReValidation.DynamisBridge/Services/IJournalAnchorCollector.cs`
 - Create: `plugins/ReValidation.DynamisBridge/Services/LiveJournalAnchorCollector.cs`
-- Create: `plugins/ReValidation.DynamisBridge/Services/NeighborPointerEnumerator.cs`
 - Create: `plugins/ReValidation.DynamisBridge/Services/IPointerInspectionService.cs`
 - Create: `plugins/ReValidation.DynamisBridge/Services/PointerInspectionService.cs`
 - Create: `plugins/ReValidation.DynamisBridge/UI/JournalExplorerWindowState.cs`
@@ -947,6 +983,17 @@ git commit -m "feat: add journal candidate ranking and note export"
   - `public interface IPointerInspectionService`
   - `public sealed class JournalExplorerWindowState`
   - `public sealed class JournalExplorerController`
+
+Final behavior requirements:
+
+- Capture only explicit, known anchors: the visible Journal addon and the
+  `AgentId.QuestJournal` agent pointer. Do not read neighboring process memory.
+- Forward availability changes into the controller. An unavailable or incompatible
+  transition clears any armed session.
+- Record `StartedAtUtc` when arming, not when exporting.
+- Gate export on an active session and surface write failures in window state.
+- Expose reset, object inspection, region inspection, pointer rendering, raw addresses,
+  anchors, and all `Discarded`, `Promising`, and `HighValueForIda` labels in the window.
 
 - [ ] **Step 1: Write the failing controller tests**
 
@@ -979,7 +1026,7 @@ public sealed class JournalExplorerControllerTests
         var state = new JournalExplorerWindowState();
         var controller = new JournalExplorerController(
             state,
-            new FakeAvailabilityService(new DynamisAvailabilitySnapshot(BridgeAvailabilityStatus.Ready, 4, "Dynamis API 4 is ready.")),
+            new FakeAvailabilityService(new DynamisAvailabilitySnapshot(BridgeAvailabilityStatus.Ready, new DynamisApiVersion(1, 7, 0), "Dynamis API 1.7 is ready.")),
             new FakeJournalAnchorCollector(
                 new JournalAnchorRecord("addon", (nint)0x1000, "GameGui", "UI root")),
             new FakePointerInspectionService(
@@ -1002,7 +1049,7 @@ public sealed class JournalExplorerControllerTests
         var state = new JournalExplorerWindowState();
         var controller = new JournalExplorerController(
             state,
-            new FakeAvailabilityService(new DynamisAvailabilitySnapshot(BridgeAvailabilityStatus.Ready, 4, "Dynamis API 4 is ready.")),
+            new FakeAvailabilityService(new DynamisAvailabilitySnapshot(BridgeAvailabilityStatus.Ready, new DynamisApiVersion(1, 7, 0), "Dynamis API 1.7 is ready.")),
             new FakeJournalAnchorCollector(
                 new JournalAnchorRecord("addon", (nint)0x1000, "GameGui", "UI root")),
             new FakePointerInspectionService(
@@ -1020,6 +1067,7 @@ public sealed class JournalExplorerControllerTests
 
     private sealed class FakeAvailabilityService(DynamisAvailabilitySnapshot snapshot) : IDynamisAvailabilityService
     {
+        public event Action? AvailabilityChanged;
         public DynamisAvailabilitySnapshot Current => snapshot;
         public bool IsReady => snapshot.Status is BridgeAvailabilityStatus.Ready or BridgeAvailabilityStatus.SessionActive;
     }
@@ -1032,9 +1080,9 @@ public sealed class JournalExplorerControllerTests
     private sealed class FakePointerInspectionService(params JournalCandidateSeed[] seeds) : IPointerInspectionService
     {
         public IReadOnlyList<JournalCandidateSeed> ExpandCandidates(IReadOnlyList<JournalAnchorRecord> anchors) => seeds;
-        public bool InspectObject(nint address) => true;
-        public bool InspectRegion(nint address, nuint size) => true;
-        public bool DrawPointer(string label, nint address) => true;
+        public bool InspectObject(nint address, string? name) => true;
+        public bool InspectRegion(nint address, uint size, string typeName, string? name) => true;
+        public bool DrawPointer(nint address, string? name) => true;
     }
 }
 ```
@@ -1057,31 +1105,6 @@ public interface IJournalAnchorCollector
 }
 ```
 
-`NeighborPointerEnumerator.cs`:
-
-```csharp
-namespace ReValidation.DynamisBridge.Services;
-
-public sealed class NeighborPointerEnumerator
-{
-    public IReadOnlyList<nint> Enumerate(nint baseAddress, int pointerSlots)
-    {
-        if (baseAddress == 0 || pointerSlots <= 0)
-            return Array.Empty<nint>();
-
-        var pointers = new List<nint>();
-        for (var slot = 0; slot < pointerSlots; slot++)
-        {
-            var pointer = Marshal.ReadIntPtr(baseAddress, slot * IntPtr.Size);
-            if (pointer != 0)
-                pointers.Add(pointer);
-        }
-
-        return pointers.Distinct().ToArray();
-    }
-}
-```
-
 `IPointerInspectionService.cs`:
 
 ```csharp
@@ -1090,9 +1113,9 @@ namespace ReValidation.DynamisBridge.Services;
 public interface IPointerInspectionService
 {
     IReadOnlyList<JournalCandidateSeed> ExpandCandidates(IReadOnlyList<JournalAnchorRecord> anchors);
-    bool InspectObject(nint address);
-    bool InspectRegion(nint address, nuint size);
-    bool DrawPointer(string label, nint address);
+    bool InspectObject(nint address, string? name);
+    bool InspectRegion(nint address, uint size, string typeName, string? name);
+    bool DrawPointer(nint address, string? name);
 }
 ```
 
@@ -1109,6 +1132,8 @@ public sealed class JournalExplorerWindowState
     public IReadOnlyList<JournalCandidateRecord> Candidates { get; private set; } = Array.Empty<JournalCandidateRecord>();
     public string? SelectedCandidateId { get; private set; }
     public string? LastExportPath { get; private set; }
+    public DateTimeOffset? SessionStartedAtUtc { get; private set; }
+    public bool HasActiveSession => SessionStartedAtUtc.HasValue;
 
     public void SetBlocked(string detail)
     {
@@ -1116,15 +1141,17 @@ public sealed class JournalExplorerWindowState
         StatusDetailText = detail;
         Anchors = Array.Empty<JournalAnchorRecord>();
         Candidates = Array.Empty<JournalCandidateRecord>();
+        SessionStartedAtUtc = null;
     }
 
-    public void SetSession(IReadOnlyList<JournalAnchorRecord> anchors, IReadOnlyList<JournalCandidateRecord> candidates)
+    public void SetSession(DateTimeOffset startedAtUtc, IReadOnlyList<JournalAnchorRecord> anchors, IReadOnlyList<JournalCandidateRecord> candidates)
     {
         StatusText = "Armed";
         StatusDetailText = "Journal session captured.";
         Anchors = anchors;
         Candidates = candidates;
         SelectedCandidateId = candidates.FirstOrDefault()?.CandidateId;
+        SessionStartedAtUtc = startedAtUtc;
     }
 
     public void SetExport(string path)
@@ -1132,6 +1159,13 @@ public sealed class JournalExplorerWindowState
         LastExportPath = path;
         StatusText = "Exported";
         StatusDetailText = path;
+    }
+
+    public void SetExportFailed(string detail)
+    {
+        LastExportPath = null;
+        StatusText = "Export Failed";
+        StatusDetailText = detail;
     }
 
     public void SetSelectedCandidate(string candidateId)
@@ -1188,6 +1222,7 @@ public sealed class JournalExplorerController
         this.pluginVersion = pluginVersion;
         this.executableIdentityProvider = executableIdentityProvider;
         this.timeProvider = timeProvider ?? TimeProvider.System;
+        availabilityService.AvailabilityChanged += OnAvailabilityChanged;
     }
 
     public JournalExplorerWindowState State => state;
@@ -1200,24 +1235,38 @@ public sealed class JournalExplorerController
             return Task.CompletedTask;
         }
 
+        var startedAtUtc = timeProvider.GetUtcNow();
         var anchors = anchorCollector.CaptureAnchors();
         var seeds = inspectionService.ExpandCandidates(anchors);
         var candidates = ranker.Rank(seeds);
-        state.SetSession(anchors, candidates);
+        state.SetSession(startedAtUtc, anchors, candidates);
         return Task.CompletedTask;
     }
 
     public async Task ExportSessionNoteAsync(string outputRoot, CancellationToken cancellationToken)
     {
+        if (!state.HasActiveSession || state.SessionStartedAtUtc is not { } startedAtUtc)
+        {
+            state.SetExportFailed("A session note requires an active session.");
+            return;
+        }
+
         var session = new JournalProbeSession(
-            timeProvider.GetUtcNow(),
+            startedAtUtc,
             pluginVersion,
             availabilityService.Current.ApiVersion,
             executableIdentityProvider(),
             state.Anchors,
             state.Candidates);
-        var path = await noteWriter.WriteAsync(session, outputRoot, cancellationToken);
-        state.SetExport(path);
+        try
+        {
+            var path = await noteWriter.WriteAsync(session, outputRoot, cancellationToken);
+            state.SetExport(path);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            state.SetExportFailed($"The session note could not be written: {exception.Message}");
+        }
     }
 
     public void MarkSelectedCandidateDisposition(JournalCandidateDisposition disposition) =>
@@ -1226,13 +1275,14 @@ public sealed class JournalExplorerController
     public bool InspectSelectedCandidateObject()
     {
         var candidate = state.Candidates.FirstOrDefault(entry => entry.CandidateId == state.SelectedCandidateId);
-        return candidate is not null && inspectionService.InspectObject(candidate.Address);
+        return candidate is not null && inspectionService.InspectObject(candidate.Address, candidate.CandidateId);
     }
 
-    public bool InspectSelectedCandidateRegion(nuint size)
+    public bool InspectSelectedCandidateRegion(uint size)
     {
         var candidate = state.Candidates.FirstOrDefault(entry => entry.CandidateId == state.SelectedCandidateId);
-        return candidate is not null && inspectionService.InspectRegion(candidate.Address, size);
+        return candidate is not null
+            && inspectionService.InspectRegion(candidate.Address, size, candidate.ClassName ?? "byte", candidate.CandidateId);
     }
 }
 ```
@@ -1244,7 +1294,7 @@ namespace ReValidation.DynamisBridge.Services;
 
 public sealed class LiveJournalAnchorCollector(
     Func<nint> getAddonAddress,
-    Func<IReadOnlyList<nint>> getKnownCandidatePointers) : IJournalAnchorCollector
+    Func<nint> getJournalAgentAddress) : IJournalAnchorCollector
 {
     public IReadOnlyList<JournalAnchorRecord> CaptureAnchors()
     {
@@ -1253,9 +1303,9 @@ public sealed class LiveJournalAnchorCollector(
         if (addonAddress != 0)
             anchors.Add(new JournalAnchorRecord("journal-addon", addonAddress, "GameGui", "UI root"));
 
-        foreach (var pointer in getKnownCandidatePointers())
-            if (pointer != 0)
-                anchors.Add(new JournalAnchorRecord($"known-{pointer:X}", pointer, "KnownCandidate", "Known pointer"));
+        var agentAddress = getJournalAgentAddress();
+        if (agentAddress != 0)
+            anchors.Add(new JournalAnchorRecord("journal-agent", agentAddress, "FFXIVClientStructs", "Agent state"));
 
         return anchors;
     }
@@ -1267,45 +1317,38 @@ public sealed class LiveJournalAnchorCollector(
 ```csharp
 namespace ReValidation.DynamisBridge.Services;
 
-public sealed class PointerInspectionService(
-    IDynamisApiClient apiClient,
-    NeighborPointerEnumerator neighborPointerEnumerator) : IPointerInspectionService
+public sealed class PointerInspectionService(IDynamisApiClient apiClient) : IPointerInspectionService
 {
     public IReadOnlyList<JournalCandidateSeed> ExpandCandidates(IReadOnlyList<JournalAnchorRecord> anchors)
     {
-        var seeds = new List<JournalCandidateSeed>();
-        foreach (var anchor in anchors)
-        {
-            seeds.Add(CreateSeed(anchor.AnchorId, anchor.Address, anchor.Role));
-            foreach (var neighbor in neighborPointerEnumerator.Enumerate(anchor.Address, pointerSlots: 8))
-                seeds.Add(CreateSeed(anchor.AnchorId, neighbor, "neighbor"));
-        }
-
-        return seeds
+        return anchors
+            .Where(anchor => anchor.Address != 0)
+            .Select(anchor => CreateSeed(anchor.AnchorId, anchor.Address, anchor.Role))
             .GroupBy(seed => seed.Address)
             .Select(group => group.First())
             .ToArray();
     }
 
-    public bool InspectObject(nint address) => apiClient.InspectObject(address);
-    public bool InspectRegion(nint address, nuint size) => apiClient.InspectRegion(address, size);
-    public bool DrawPointer(string label, nint address) => apiClient.DrawPointer(label, address);
+    public bool InspectObject(nint address, string? name) => apiClient.InspectObject(address, name: name);
+    public bool InspectRegion(nint address, uint size, string typeName, string? name) =>
+        apiClient.InspectRegion(address, size, typeName, name: name);
+    public bool DrawPointer(nint address, string? name) =>
+        apiClient.DrawPointer(address, null, () => name, null, 0, Vector2.Zero);
 
     private JournalCandidateSeed CreateSeed(string anchorId, nint address, string role)
     {
-        var className = apiClient.GetClassName(address);
+        var className = apiClient.GetClass(address)?.Name;
         var looksLikeLeafTextNode = className?.Contains("TextNode", StringComparison.OrdinalIgnoreCase) == true;
-        var childPointers = neighborPointerEnumerator.Enumerate(address, pointerSlots: 4).Count;
         return new JournalCandidateSeed(
             $"candidate-{address:X}",
             address,
             anchorId,
             role,
             className,
-            $"neighbors={childPointers}",
+            "explicit-anchor",
             null,
             looksLikeLeafTextNode,
-            childPointers);
+            0);
     }
 }
 ```
@@ -1333,28 +1376,38 @@ Update `JournalExplorerWindow.cs` to render:
 ImGui.TextUnformatted($"Status: {controller.State.StatusText}");
 if (ImGui.Button("Arm Journal Session"))
     _ = controller.ArmJournalSessionAsync(CancellationToken.None);
+if (ImGui.Button("Reset Session"))
+    controller.ResetSession();
 if (ImGui.Button("Inspect Object"))
     controller.InspectSelectedCandidateObject();
+if (ImGui.Button("Inspect Region (0x100)"))
+    controller.InspectSelectedCandidateRegion(0x100);
+if (ImGui.Button("Mark Discarded"))
+    controller.MarkSelectedCandidateDisposition(JournalCandidateDisposition.Discarded);
+if (ImGui.Button("Mark Promising"))
+    controller.MarkSelectedCandidateDisposition(JournalCandidateDisposition.Promising);
 if (ImGui.Button("Mark High Value For IDA"))
     controller.MarkSelectedCandidateDisposition(JournalCandidateDisposition.HighValueForIda);
 if (ImGui.Button("Export Session Note"))
     _ = controller.ExportSessionNoteAsync(exportRoot, CancellationToken.None);
 foreach (var candidate in controller.State.Candidates)
-    ImGui.TextUnformatted($"{candidate.CandidateId} {candidate.Classification} {candidate.Confidence}");
+    ImGui.TextUnformatted($"{candidate.CandidateId} 0x{candidate.Address:X} {candidate.Classification} {candidate.Confidence}");
+
+controller.DrawSelectedCandidatePointer();
 ```
 
 `Plugin.cs` should compose the live services:
 
 ```csharp
 var gateway = new DalamudDynamisIpcGateway(pluginInterface);
-var apiClient = new DynamisApiClient(gateway, minimumApiVersion: 4);
+var apiClient = new DynamisApiClient(gateway, requiredMajorVersion: 1, minimumMinorVersion: 7);
 apiClient.Refresh();
 var availabilityService = new DynamisAvailabilityService(apiClient);
 var exportRoot = Path.Combine(pluginInterface.GetPluginConfigDirectory(), "dynamis-bridge");
 var anchorCollector = new LiveJournalAnchorCollector(
     () => PluginServices.GameGui.GetAddonByName("Journal", 1).Address,
-    () => Array.Empty<nint>());
-var inspectionService = new PointerInspectionService(apiClient, new NeighborPointerEnumerator());
+    GetJournalAgentAddress);
+var inspectionService = new PointerInspectionService(apiClient);
 var controller = new JournalExplorerController(
     new JournalExplorerWindowState(),
     availabilityService,
