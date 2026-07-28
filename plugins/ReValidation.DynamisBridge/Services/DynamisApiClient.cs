@@ -33,8 +33,8 @@ public sealed class DynamisApiClient : IDynamisApiClient
         this.gateway = gateway;
         this.minimumApiVersion = minimumApiVersion;
         initializedSubscription = gateway.SubscribeApiInitialized(Refresh);
-        disposingSubscription = gateway.SubscribeApiDisposing(Refresh);
-        Current = new DynamisAvailabilitySnapshot(BridgeAvailabilityStatus.Unavailable, null, "Dynamis is unavailable.");
+        disposingSubscription = gateway.SubscribeApiDisposing(PublishUnavailable);
+        Current = UnavailableSnapshot();
     }
 
     public event Action? AvailabilityChanged;
@@ -45,12 +45,21 @@ public sealed class DynamisApiClient : IDynamisApiClient
         var version = gateway.TryGetApiVersion();
         Current = version switch
         {
-            null => new DynamisAvailabilitySnapshot(BridgeAvailabilityStatus.Unavailable, null, "Dynamis is unavailable."),
+            null => UnavailableSnapshot(),
             var resolved when resolved < minimumApiVersion => new DynamisAvailabilitySnapshot(BridgeAvailabilityStatus.Incompatible, version, $"Dynamis API {version} is too old."),
             _ => new DynamisAvailabilitySnapshot(BridgeAvailabilityStatus.Ready, version, $"Dynamis API {version} is ready."),
         };
         AvailabilityChanged?.Invoke();
     }
+
+    private void PublishUnavailable()
+    {
+        Current = UnavailableSnapshot();
+        AvailabilityChanged?.Invoke();
+    }
+
+    private static DynamisAvailabilitySnapshot UnavailableSnapshot() =>
+        new(BridgeAvailabilityStatus.Unavailable, null, "Dynamis is unavailable.");
 
     public bool InspectObject(nint address) => gateway.TryInspectObject(address);
     public bool InspectRegion(nint address, nuint size) => gateway.TryInspectRegion(address, size);
