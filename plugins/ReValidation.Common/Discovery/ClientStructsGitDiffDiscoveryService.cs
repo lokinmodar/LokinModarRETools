@@ -22,6 +22,7 @@ public sealed class ClientStructsGitDiffDiscoveryService : IClientStructsDiscove
     {
         ArgumentNullException.ThrowIfNull(options);
         cancellationToken.ThrowIfCancellationRequested();
+        ValidateClientStructsCheckout(options.RepositoryPath);
 
         var changedFiles = await diffReader.ReadChangedFilesAsync(options.RepositoryPath, options.BaseRef, cancellationToken);
         var targets = changedFiles
@@ -39,6 +40,16 @@ public sealed class ClientStructsGitDiffDiscoveryService : IClientStructsDiscove
         "FFXIVClientStructs\\FFXIV\\Client\\Game\\UI\\Journal.cs" or
         "FFXIVClientStructs\\FFXIV\\Client\\UI\\AddonItemDetail.cs" or
         "FFXIVClientStructs\\FFXIV\\Client\\UI\\AddonActionDetail.cs";
+
+    private static void ValidateClientStructsCheckout(string repositoryPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(repositoryPath);
+
+        if (!Directory.Exists(repositoryPath)
+            || !File.Exists(Path.Combine(repositoryPath, "FFXIVClientStructs.slnx"))
+            || !File.Exists(Path.Combine(repositoryPath, "FFXIVClientStructs", "FFXIVClientStructs.csproj")))
+            throw new ArgumentException("Repository path must be a local FFXIVClientStructs checkout.", nameof(repositoryPath));
+    }
 
     private static string ReadSource(string repositoryPath, string sourceFile) =>
         File.ReadAllText(Path.Combine(repositoryPath, sourceFile));

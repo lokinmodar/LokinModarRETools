@@ -36,14 +36,12 @@ public sealed class ClientStructsGitDiffDiscoveryServiceTests
                 }
                 """,
         };
-        var discovery = new ClientStructsGitDiffDiscoveryService(
-            diffReader,
-            new InteropBindingSourceParser(),
-            (_, path) => sources[path]);
+        using var checkout = new ClientStructsCheckoutDirectory();
+        var discovery = new ClientStructsGitDiffDiscoveryService(diffReader, new InteropBindingSourceParser(), (_, path) => sources[path]);
 
         var catalog = await discovery.DiscoverAsync(
             new ClientStructsDiscoveryOptions(
-                @"C:\repo",
+                checkout.Path,
                 "upstream/main",
                 DiscoveryMode.Diff,
                 [TargetFamily.Journal, TargetFamily.ItemTooltip],
@@ -56,11 +54,50 @@ public sealed class ClientStructsGitDiffDiscoveryServiceTests
         Assert.All(catalog.Targets, target => Assert.True(target.ChangedAgainstBaseRef));
     }
 
+    [Fact]
+    public async Task DiscoverAsync_RejectsRootsThatAreNotClientStructsCheckouts()
+    {
+        var diffReader = new FakeGitDiffReader([]);
+        var discovery = new ClientStructsGitDiffDiscoveryService(diffReader, new InteropBindingSourceParser());
+
+        await Assert.ThrowsAsync<ArgumentException>(() => discovery.DiscoverAsync(
+            new ClientStructsDiscoveryOptions(
+                Path.GetTempPath(),
+                "upstream/main",
+                DiscoveryMode.Diff,
+                [TargetFamily.Journal],
+                null),
+            CancellationToken.None).AsTask());
+
+        Assert.False(diffReader.WasRead);
+    }
+
     private sealed class FakeGitDiffReader(IReadOnlyList<string> changedFiles) : IGitDiffReader
     {
+        public bool WasRead { get; private set; }
+
         public ValueTask<IReadOnlyList<string>> ReadChangedFilesAsync(
             string repositoryPath,
             string baseRef,
-            CancellationToken cancellationToken) => ValueTask.FromResult(changedFiles);
+            CancellationToken cancellationToken)
+        {
+            WasRead = true;
+            return ValueTask.FromResult(changedFiles);
+        }
+    }
+
+    private sealed class ClientStructsCheckoutDirectory : IDisposable
+    {
+        public ClientStructsCheckoutDirectory()
+        {
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"revalidation-clientstructs-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(System.IO.Path.Combine(Path, "FFXIVClientStructs"));
+            File.WriteAllText(System.IO.Path.Combine(Path, "FFXIVClientStructs.slnx"), "<Solution />");
+            File.WriteAllText(System.IO.Path.Combine(Path, "FFXIVClientStructs", "FFXIVClientStructs.csproj"), "<Project />");
+        }
+
+        public string Path { get; }
+
+        public void Dispose() => Directory.Delete(Path, recursive: true);
     }
 }

@@ -31,9 +31,37 @@ public sealed class InteropBindingSourceParserTests
             && binding.Family == TargetFamily.Journal
             && binding.CueFamily == CueFamily.JournalCompletedList
             && binding.ProofProfile == ProofProfile.StaticAddressConsumer
-            && binding.RequiredProofLevel == 4);
+            && binding.RequiredProofLevel == 3);
         Assert.Contains(bindings, binding => binding.TargetId == "Journal.IsEntryComplete"
             && binding.BindingKind == BindingKind.MemberFunction
-            && binding.ProofProfile == ProofProfile.DetourFunction);
+            && binding.ProofProfile == ProofProfile.DetourFunction
+            && binding.RequiredProofLevel == 3);
+    }
+
+    [Fact]
+    public void ParseBindings_AssignsNestedBindingsToTheirContainingType()
+    {
+        var parser = new InteropBindingSourceParser();
+        var source = """
+            namespace FFXIVClientStructs.FFXIV.Client.Game.UI;
+            public partial struct Journal {
+                public partial struct NestedJournalData {
+                    [MemberFunction("48 89 5C 24 ??")]
+                    public partial void Refresh();
+                }
+
+                [MemberFunction("48 89 74 24 ??")]
+                public partial void Update();
+            }
+            """;
+
+        var bindings = parser.Parse(
+            @"FFXIVClientStructs\FFXIV\Client\Game\UI\Journal.cs",
+            source,
+            changedAgainstBaseRef: true);
+
+        Assert.Contains(bindings, binding => binding.TargetId == "NestedJournalData.Refresh");
+        Assert.Contains(bindings, binding => binding.TargetId == "Journal.Update");
+        Assert.DoesNotContain(bindings, binding => binding.TargetId == "Journal.Refresh");
     }
 }
