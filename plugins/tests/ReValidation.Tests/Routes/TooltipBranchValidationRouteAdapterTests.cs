@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using ReValidation.Common.Discovery;
 using ReValidation.Common.Models;
 using ReValidation.Common.Proof;
@@ -5,6 +6,8 @@ using ReValidation.Common.Scenarios;
 using ReValidation.LocalClientStructs.Runtime;
 using ReValidation.LocalClientStructs.Services;
 using ReValidation.OwnerSignatures.Runtime;
+using ReValidation.OwnerSignatures.Runtime.HookTargets;
+using ReValidation.OwnerSignatures.Runtime.Proof;
 using ReValidation.OwnerSignatures.Services;
 using Xunit;
 
@@ -43,7 +46,9 @@ public sealed class TooltipBranchValidationRouteAdapterTests
     {
         var group = ProofGroupFactory.CreateActionTooltipGroup();
         var adapter = new OwnerBranchValidationRouteAdapter(
-            new FakeSignatureResolutionProvider(new SignatureResolution("AddonActionDetail.GenerateTooltip", 2, null, "multiple matches")));
+            new FakeSignatureResolutionProvider(new SignatureResolution("actionTooltip", 2, null, "multiple matches")),
+            CreateOwnerHookProofExecutor(observedHitCount: 1),
+            CreateOwnerHookTargets());
 
         var report = await adapter.RunProofGroupAsync(group, requiredProofLevel: 4, CancellationToken.None);
 
@@ -66,18 +71,18 @@ public sealed class TooltipBranchValidationRouteAdapterTests
     }
 
     [Fact]
-    public async Task OwnerExecutor_RestoresAndDisposesHook_WhenCancelled()
+    public async Task OwnerRoute_UsesGenericHookPipelineForTooltipProof()
     {
-        var probe = new CancellingTooltipProbe();
-        var hookFactory = new TrackingTooltipProofHookFactory(observedHitCount: 0);
+        var hook = new FakeOwnerHook(observedHitCount: 1);
+        var adapter = new OwnerBranchValidationRouteAdapter(
+            new FakeSignatureResolutionProvider(new SignatureResolution("itemTooltip", 1, 0x1234, null)),
+            new OwnerHookProofExecutor(CreateOwnerHookTargets(), new FakeOwnerHookInstaller(hook), new FakeSignatureResolutionProvider(new SignatureResolution("itemTooltip", 1, 0x1234, null))),
+            CreateOwnerHookTargets());
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
-            await new OwnerTooltipProofExecutor(probe, hookFactory)
-                .RunAsync(ProofGroupFactory.CreateActionTooltipGroup(), requiredProofLevel: 4, new CancellationToken(canceled: true)).AsTask());
+        var report = await adapter.RunProofGroupAsync(ProofGroupFactory.CreateItemTooltipGroup(), requiredProofLevel: 4, CancellationToken.None);
 
-        Assert.Equal(1, probe.RestoreCount);
-        Assert.Equal(1, hookFactory.LastCreatedHook?.EnableCount);
-        Assert.Equal(1, hookFactory.LastCreatedHook?.DisposeCount);
+        Assert.All(report.Targets, target => Assert.Equal("passed", target.Verdict));
+        Assert.True(hook.IsDisposed);
     }
 
     private sealed class FakeTooltipProbe : ITooltipProbe
@@ -110,6 +115,19 @@ public sealed class TooltipBranchValidationRouteAdapterTests
         }
     }
 
+    private static OwnerHookTargetRegistry CreateOwnerHookTargets() =>
+        new(
+        [
+            new OwnerHookTargetDefinition("itemTooltip", "itemTooltip", "Open an item tooltip.", new TooltipHookContextCapture("item"), new NoOpHookMutationStrategy("not used")),
+            new OwnerHookTargetDefinition("actionTooltip", "actionTooltip", "Open an action tooltip.", new TooltipHookContextCapture("action"), new NoOpHookMutationStrategy("not used")),
+        ]);
+
+    private static OwnerHookProofExecutor CreateOwnerHookProofExecutor(int observedHitCount) =>
+        new(
+            CreateOwnerHookTargets(),
+            new FakeOwnerHookInstaller(new FakeOwnerHook(observedHitCount)),
+            new FakeSignatureResolutionProvider(new SignatureResolution("itemTooltip", 1, 0x1234, null)));
+
     private sealed class FakeTooltipProofHookFactory(int observedHitCount) : ITooltipProofHookFactory
     {
         public ITooltipProofHook Create(string targetId) => new FakeTooltipProofHook(observedHitCount);
@@ -141,6 +159,24 @@ public sealed class TooltipBranchValidationRouteAdapterTests
 
         public void Enable() => EnableCount++;
         public void Dispose() => DisposeCount++;
+    }
+
+    private sealed class FakeOwnerHookInstaller(IOwnerHook hook) : IOwnerHookInstaller
+    {
+        public IOwnerHook Install(OwnerHookTargetDefinition target, SignatureResolution resolution) => hook;
+    }
+
+    private sealed class FakeOwnerHook(int observedHitCount) : IOwnerHook
+    {
+        public int ObservedHitCount { get; } = observedHitCount;
+
+        public bool IsDisposed { get; private set; }
+
+        public IReadOnlyList<JsonObject> DrainObservedContexts() => [new JsonObject { ["detailKind"] = "item" }];
+
+        public void Enable() { }
+
+        public void Dispose() => IsDisposed = true;
     }
 
     private sealed class FakeSignatureResolutionProvider(SignatureResolution resolution) : ISignatureResolutionProvider

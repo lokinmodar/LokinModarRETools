@@ -2,6 +2,8 @@ using ReValidation.Common.Discovery;
 using ReValidation.Common.Models;
 using ReValidation.Common.Proof;
 using ReValidation.OwnerSignatures.Runtime;
+using ReValidation.OwnerSignatures.Runtime.HookTargets;
+using ReValidation.OwnerSignatures.Runtime.Proof;
 
 namespace ReValidation.OwnerSignatures.Services;
 
@@ -12,55 +14,48 @@ public interface ISignatureResolutionProvider
 
 public sealed class OwnerBranchValidationRouteAdapter(
     ISignatureResolutionProvider resolutionProvider,
-    IOwnerTooltipProofExecutor? itemTooltipExecutor = null,
-    IOwnerTooltipProofExecutor? actionTooltipExecutor = null) : IBranchValidationRouteAdapter
+    OwnerHookProofExecutor proofExecutor,
+    OwnerHookTargetRegistry targets) : IBranchValidationRouteAdapter
 {
     private readonly ISignatureResolutionProvider resolutionProvider = resolutionProvider ?? throw new ArgumentNullException(nameof(resolutionProvider));
-    private readonly IOwnerTooltipProofExecutor? itemTooltipExecutor = itemTooltipExecutor;
-    private readonly IOwnerTooltipProofExecutor? actionTooltipExecutor = actionTooltipExecutor;
+    private readonly OwnerHookProofExecutor proofExecutor = proofExecutor ?? throw new ArgumentNullException(nameof(proofExecutor));
+    private readonly OwnerHookTargetRegistry targets = targets ?? throw new ArgumentNullException(nameof(targets));
 
     public ValidationRoute Route => ValidationRoute.OwnerSignatures;
 
-    public ValueTask<ProofGroupRunReport> RunProofGroupAsync(ProofGroupDefinition group, int requiredProofLevel, CancellationToken cancellationToken)
+    public async ValueTask<ProofGroupRunReport> RunProofGroupAsync(ProofGroupDefinition group, int requiredProofLevel, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(group);
 
-        return group.CueFamily switch
+        var targetId = group.CueFamily switch
         {
-            CueFamily.TooltipItemDetail => RunTooltipAsync(group, "itemTooltip", itemTooltipExecutor, requiredProofLevel, cancellationToken),
-            CueFamily.TooltipActionDetail => RunTooltipAsync(group, "actionTooltip", actionTooltipExecutor, requiredProofLevel, cancellationToken),
-            _ => ValueTask.FromResult(Blocked(group, "Cue family is not supported by the owner route yet.")),
+            CueFamily.TooltipItemDetail => "itemTooltip",
+            CueFamily.TooltipActionDetail => "actionTooltip",
+            _ => null,
         };
-    }
 
-    private async ValueTask<ProofGroupRunReport> RunTooltipAsync(
-        ProofGroupDefinition group,
-        string signatureId,
-        IOwnerTooltipProofExecutor? executor,
-        int requiredProofLevel,
-        CancellationToken cancellationToken)
-    {
-        var resolution = resolutionProvider.GetResolution(signatureId);
+        if (targetId is null)
+            return Blocked(group, "Cue family is not supported by the owner route yet.");
+
+        var target = targets.Get(targetId);
+        var resolution = resolutionProvider.GetResolution(target.SignatureId);
         if (resolution.MatchCount != 1)
             return Blocked(group, "Signature resolution was not unique.", resolution);
 
-        if (executor is null)
-            return Blocked(group, "Tooltip proof executor is not configured.", resolution);
-
-        var report = await executor.RunAsync(group, requiredProofLevel, cancellationToken);
-        var targets = report.Targets
+        using var session = await proofExecutor.CaptureAsync(targetId, cancellationToken);
+        var targetsReport = group.Targets
             .Select(target => new TargetProofRecord(
                 target.TargetId,
-                target.Verdict,
+                session.StageRecords.Any(stage => stage.Stage is OwnerHookProofStage.HitObserved && stage.Status is OwnerHookProofStatus.Passed) ? "passed" : "not-observed",
                 resolution.MatchCount,
                 resolution.Rva is null ? null : checked((long)resolution.Rva.Value),
-                target.ObservedHitCount,
-                target.HookInstalled,
-                target.EffectApplied,
-                target.EffectRestored,
-                target.BlockingReason))
+                session.Hook.ObservedHitCount,
+                session.StageRecords.Any(stage => stage.Stage is OwnerHookProofStage.HookInstalled && stage.Status is OwnerHookProofStatus.Passed),
+                true,
+                true,
+                null))
             .ToArray();
-        return new ProofGroupRunReport(report.GroupId, targets, report.ArtifactSummary);
+        return new ProofGroupRunReport(group.GroupId, targetsReport, "Owner tooltip proof completed through the generic owner hook pipeline.");
     }
 
     private static ProofGroupRunReport Blocked(ProofGroupDefinition group, string reason, SignatureResolution? resolution = null) =>

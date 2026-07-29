@@ -8,6 +8,8 @@ using ReValidation.LocalClientStructs.Scenarios;
 using ReValidation.LocalClientStructs.Services;
 using ReValidation.OwnerSignatures.Scenarios;
 using ReValidation.OwnerSignatures.Services;
+using ReValidation.OwnerSignatures.Runtime.HookTargets;
+using ReValidation.OwnerSignatures.Runtime.Proof;
 using Xunit;
 
 namespace ReValidation.Tests.Scenarios;
@@ -65,9 +67,8 @@ public sealed class TooltipScenarioTests
         var probe = new FakeTooltipProbe(detailKind: "action", visibleText: "Sprint");
         var scenario = new TooltipActionDetailOwnerScenario(
             probe,
-            [new SignatureRequirement("actionTooltip", "48 89 ?? ??", mustBeUnique: true)],
-            [new SignatureResolution("actionTooltip", matchCount: 1, rva: 0x1234, failureReason: null)],
-            comparisonSource: new FakeTooltipComparisonSource("action", "Sprint"));
+            CreateProofExecutor(probe, "actionTooltip", "action"),
+            new FakeTooltipComparisonSource("action", "Sprint"));
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.FullProof);
 
         var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
@@ -92,7 +93,7 @@ public sealed class TooltipScenarioTests
     }
 
     [Fact]
-    public async Task OwnerFullProof_Blocks_WhenSignatureRequirementsAreMissing()
+    public async Task OwnerFullProof_Blocks_WhenHookProofExecutorIsMissing()
     {
         var scenario = new TooltipItemDetailOwnerScenario(new FakeTooltipProbe("item", "Potion"));
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.FullProof);
@@ -101,17 +102,17 @@ public sealed class TooltipScenarioTests
             .RunAsync(scenario, context, CancellationToken.None);
 
         Assert.False(report.IsSuccess);
-        Assert.Equal("Tooltip signature requirements are required.", report.Precondition!.BlockingReason);
+        Assert.Equal("Owner tooltip hook proof executor is required.", report.Precondition!.BlockingReason);
     }
 
     [Fact]
     public async Task Compare_UsesReferenceSourceAndReportsMismatch()
     {
+        var probe = new FakeTooltipProbe("item", "Potion");
         var scenario = new TooltipItemDetailOwnerScenario(
-            new FakeTooltipProbe("item", "Potion"),
-            [new SignatureRequirement("itemTooltip", "48 89 ?? ??", mustBeUnique: true)],
-            [new SignatureResolution("itemTooltip", matchCount: 1, rva: 0x1234, failureReason: null)],
-            comparisonSource: new FakeTooltipComparisonSource("item", "Ether"));
+            probe,
+            CreateProofExecutor(probe, "itemTooltip", "item"),
+            new FakeTooltipComparisonSource("item", "Ether"));
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.Compare);
 
         var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
@@ -140,9 +141,7 @@ public sealed class TooltipScenarioTests
     public async Task ArmCuePolling_Waits_WhenTooltipIsNotVisible()
     {
         var scenario = new TooltipActionDetailOwnerScenario(
-            new ThrowingTooltipProbe("ActionDetail addon is not visible."),
-            [new SignatureRequirement("actionTooltip", "48 89 ?? ??", mustBeUnique: true)],
-            [new SignatureResolution("actionTooltip", matchCount: 1, rva: 0x1234, failureReason: null)]);
+            new ThrowingTooltipProbe("ActionDetail addon is not visible."));
 
         var armable = Assert.IsAssignableFrom<IArmableValidationScenario>(scenario);
         var cue = await armable.PollArmCueAsync(CancellationToken.None);
@@ -150,6 +149,20 @@ public sealed class TooltipScenarioTests
         Assert.False(cue.IsReady);
         Assert.Equal("ActionDetail addon is not visible.", cue.StatusText);
     }
+
+    private static OwnerHookProofExecutor CreateProofExecutor(ITooltipProbe probe, string targetId, string detailKind) =>
+        new(
+            new OwnerHookTargetRegistry(
+            [
+                new OwnerHookTargetDefinition(
+                    targetId,
+                    targetId,
+                    "Open a tooltip.",
+                    new TooltipHookContextCapture(detailKind),
+                    new TooltipOwnerMutationStrategy(probe)),
+            ]),
+            new FakeOwnerHookInstaller(new FakeOwnerHook(detailKind)),
+            new StaticResolutionProvider(new SignatureResolution(targetId, 1, 0x1234, null)));
 
     private sealed class FakeTooltipProbe(string detailKind, string visibleText) : ITooltipProbe
     {
@@ -194,6 +207,27 @@ public sealed class TooltipScenarioTests
         public ValueTask<ScenarioOverrideTicket?> ApplySentinelOverrideAsync(string sentinel, CancellationToken cancellationToken) => throw new NotSupportedException();
         public ValueTask<ScenarioAssertResult?> AssertSentinelAsync(string sentinel, CancellationToken cancellationToken) => throw new NotSupportedException();
         public ValueTask<ScenarioRestoreResult> RestoreAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class FakeOwnerHookInstaller(IOwnerHook hook) : IOwnerHookInstaller
+    {
+        public IOwnerHook Install(OwnerHookTargetDefinition target, SignatureResolution resolution) => hook;
+    }
+
+    private sealed class FakeOwnerHook(string detailKind) : IOwnerHook
+    {
+        public int ObservedHitCount => 1;
+
+        public IReadOnlyList<JsonObject> DrainObservedContexts() => [new JsonObject { ["detailKind"] = detailKind }];
+
+        public void Enable() { }
+
+        public void Dispose() { }
+    }
+
+    private sealed class StaticResolutionProvider(SignatureResolution resolution) : ISignatureResolutionProvider
+    {
+        public SignatureResolution GetResolution(string signatureId) => resolution;
     }
 
     private sealed class NullRouteMetadataProvider(ValidationRoute route) : IRouteMetadataProvider

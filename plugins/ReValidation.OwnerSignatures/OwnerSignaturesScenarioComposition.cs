@@ -44,14 +44,12 @@ public static class OwnerSignaturesScenarioComposition
                 mutationBlockingReason: dependencies.JournalMutationBlockingReason),
             new TooltipItemDetailOwnerScenario(
                 dependencies.ItemTooltipProbe,
-                [ItemTooltipRequirement],
-                FindResolutions(dependencies.Resolutions, ItemTooltipRequirement.Id),
-                comparisonSource: dependencies.ItemTooltipComparisonSource),
+                dependencies.HookProofExecutor,
+                dependencies.ItemTooltipComparisonSource),
             new TooltipActionDetailOwnerScenario(
                 dependencies.ActionTooltipProbe,
-                [ActionTooltipRequirement],
-                FindResolutions(dependencies.Resolutions, ActionTooltipRequirement.Id),
-                comparisonSource: dependencies.ActionTooltipComparisonSource),
+                dependencies.HookProofExecutor,
+                dependencies.ActionTooltipComparisonSource),
         };
 
         if (dependencies.HookProofExecutor is not null && dependencies.HookTargets is not null)
@@ -89,4 +87,5 @@ public static class OwnerSignaturesScenarioComposition
         IEnumerable<SignatureResolution> resolutions,
         string id) =>
         resolutions.Where(resolution => string.Equals(resolution.Id, id, StringComparison.Ordinal)).ToArray();
+
 }

@@ -1,9 +1,12 @@
+using System.Text.Json.Nodes;
 using ReValidation.Common.Models;
 using ReValidation.Common.Scenarios;
 using ReValidation.LocalClientStructs;
 using ReValidation.LocalClientStructs.Scenarios;
 using ReValidation.LocalClientStructs.Services;
 using ReValidation.OwnerSignatures;
+using ReValidation.OwnerSignatures.Runtime.HookTargets;
+using ReValidation.OwnerSignatures.Runtime.Proof;
 using ReValidation.OwnerSignatures.Scenarios;
 using ReValidation.OwnerSignatures.Services;
 using Xunit;
@@ -93,7 +96,8 @@ public sealed class RouteScenarioCompositionTests
                 new FakeJournalProbe(),
                 new FakeTooltipProbe("item"),
                 new FakeTooltipProbe("action"),
-                resolutions));
+                resolutions,
+                HookProofExecutor: CreateOwnerHookProofExecutor()));
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.CaptureOnly);
 
         foreach (var scenario in registry.Scenarios)
@@ -180,5 +184,36 @@ public sealed class RouteScenarioCompositionTests
 
         public ValueTask<ScenarioRestoreResult> RestoreAsync(CancellationToken cancellationToken) =>
             ValueTask.FromResult(new ScenarioRestoreResult(true, "noop", []));
+    }
+
+    private static OwnerHookProofExecutor CreateOwnerHookProofExecutor() =>
+        new(
+            new OwnerHookTargetRegistry(
+            [
+                new OwnerHookTargetDefinition("itemTooltip", "itemTooltip", "Open an item tooltip.", new TooltipHookContextCapture("item"), new NoOpHookMutationStrategy("not used")),
+                new OwnerHookTargetDefinition("actionTooltip", "actionTooltip", "Open an action tooltip.", new TooltipHookContextCapture("action"), new NoOpHookMutationStrategy("not used")),
+            ]),
+            new FakeOwnerHookInstaller(),
+            new FakeResolutionProvider());
+
+    private sealed class FakeOwnerHookInstaller : IOwnerHookInstaller
+    {
+        public IOwnerHook Install(OwnerHookTargetDefinition target, SignatureResolution resolution) => new FakeOwnerHook();
+    }
+
+    private sealed class FakeOwnerHook : IOwnerHook
+    {
+        public int ObservedHitCount => 0;
+
+        public IReadOnlyList<JsonObject> DrainObservedContexts() => [];
+
+        public void Enable() { }
+
+        public void Dispose() { }
+    }
+
+    private sealed class FakeResolutionProvider : ISignatureResolutionProvider
+    {
+        public SignatureResolution GetResolution(string signatureId) => new(signatureId, 1, 0x1234, null);
     }
 }

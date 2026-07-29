@@ -81,16 +81,27 @@ public sealed class Plugin : IDalamudPlugin
                 "Open the Journal list.",
                 new JournalProviderHookContextCapture(),
                 new JournalProviderMutationStrategy()),
+            new OwnerHookTargetDefinition(
+                "itemTooltip",
+                "itemTooltip",
+                "Open an item tooltip.",
+                new TooltipHookContextCapture("item"),
+                new TooltipOwnerMutationStrategy(itemTooltipProbe)),
+            new OwnerHookTargetDefinition(
+                "actionTooltip",
+                "actionTooltip",
+                "Open an action tooltip.",
+                new TooltipHookContextCapture("action"),
+                new TooltipOwnerMutationStrategy(actionTooltipProbe)),
         ]);
         var hookProofExecutor = new OwnerHookProofExecutor(
             hookTargets,
             new DalamudOwnerHookInstaller(PluginServices.GameInteropProvider, (ulong)PluginServices.SigScanner.SearchBase),
             resolutionProvider);
-        var hookFactory = new DalamudTooltipProofHookFactory(PluginServices.GameInteropProvider, resolutionProvider, (ulong)PluginServices.SigScanner.SearchBase);
         branchRouteAdapter = new OwnerBranchValidationRouteAdapter(
             resolutionProvider,
-            new OwnerTooltipProofExecutor(itemTooltipProbe, hookFactory),
-            new OwnerTooltipProofExecutor(actionTooltipProbe, hookFactory));
+            hookProofExecutor,
+            hookTargets);
         var registry = OwnerSignaturesScenarioComposition.CreateRegistry(
             new OwnerSignaturesScenarioDependencies(
                 journalProbe,
