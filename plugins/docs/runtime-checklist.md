@@ -79,11 +79,13 @@ Run steps:
 
 1. Confirm `signature:journalProvider` reports exactly one match before arming.
 2. Open the Journal list.
-3. Select `Journal.MutationProof` and arm the scenario.
-4. Open or refresh the Journal list to provide the explicit cue.
-5. Confirm the controlled mutation attempt captures and asserts through the owner hook pipeline.
-6. Confirm the scenario disarms after capture or assertion.
-7. Treat `effect_not_proven` as an honest intermediate result, not as a hidden failure.
+3. Select `Journal.MutationProof` and choose `OverrideAssert` or `FullProof`; `CaptureOnly` and `Compare`
+   capture the hook evidence but do not attempt a mutation or assertion.
+4. Arm the scenario, then open or refresh the Journal list to provide the explicit cue.
+5. Confirm the controlled mutation attempt and assertion run through the owner hook pipeline.
+6. Confirm the scenario restores and disarms after the assertion.
+7. Treat `effect_not_proven` as an honest failed assertion: it records that the attempted effect was not
+   demonstrated and the run does not pass.
 
 ### Tooltip.ItemDetail
 

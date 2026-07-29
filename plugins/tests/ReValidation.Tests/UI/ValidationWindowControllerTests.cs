@@ -6,6 +6,11 @@ using ReValidation.Common.Execution;
 using ReValidation.Common.Models;
 using ReValidation.Common.Proof;
 using ReValidation.Common.UI;
+using ReValidation.OwnerSignatures.Runtime;
+using ReValidation.OwnerSignatures.Runtime.HookTargets;
+using ReValidation.OwnerSignatures.Runtime.Proof;
+using ReValidation.OwnerSignatures.Scenarios;
+using ReValidation.OwnerSignatures.Services;
 using Xunit;
 
 public sealed class ValidationWindowControllerTests
@@ -186,10 +191,7 @@ public sealed class ValidationWindowControllerTests
     [Fact]
     public async Task ArmSelectedScenario_JournalHookValidation_PublishesJournalArmPrompt()
     {
-        var scenario = new ArmableStubScenario(
-            "journal.hook-validation",
-            "Open the Journal list.",
-            new ScenarioArmState(false, "Waiting for Journal cue."));
+        var scenario = CreateJournalHookValidationScenario();
         var controller = new ValidationWindowController(
             state: new ValidationWindowState(),
             registry: ValidationScenarioRegistry.ForTests(scenario),
@@ -202,7 +204,7 @@ public sealed class ValidationWindowControllerTests
 
         Assert.True(controller.State.IsArmed);
         Assert.Equal("Armed", controller.State.StatusText);
-        Assert.Equal("Open the Journal list.", controller.State.StatusDetailText);
+        Assert.Equal("Arm the scenario, then open the Journal list.", controller.State.StatusDetailText);
     }
 
     [Fact]
@@ -341,10 +343,51 @@ public sealed class ValidationWindowControllerTests
         return controller;
     }
 
+    private static JournalHookValidationOwnerScenario CreateJournalHookValidationScenario() =>
+        new(
+            new OwnerHookProofExecutor(
+                new OwnerHookTargetRegistry(
+                [
+                    new OwnerHookTargetDefinition(
+                        JournalHookTargetIds.JournalProvider,
+                        "journalProvider",
+                        "Open the Journal list.",
+                        new JournalProviderHookContextCapture(),
+                        new NoOpHookMutationStrategy("Not used by this controller test.")),
+                ]),
+                new FakeOwnerHookInstaller(),
+                new StaticResolutionProvider()),
+            JournalHookTargetIds.JournalProvider);
+
     private sealed class StubDiscoveryService(DiscoveredTargetCatalog catalog) : IClientStructsDiscoveryService
     {
         public ValueTask<DiscoveredTargetCatalog> DiscoverAsync(ClientStructsDiscoveryOptions options, CancellationToken cancellationToken) =>
             ValueTask.FromResult(catalog);
+    }
+
+    private sealed class FakeOwnerHookInstaller : IOwnerHookInstaller
+    {
+        public IOwnerHook Install(OwnerHookTargetDefinition target, SignatureResolution resolution) => new FakeOwnerHook();
+    }
+
+    private sealed class FakeOwnerHook : IOwnerHook
+    {
+        public int ObservedHitCount => 0;
+
+        public IReadOnlyList<JsonObject> DrainObservedContexts() => [];
+
+        public void Enable()
+        {
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class StaticResolutionProvider : ISignatureResolutionProvider
+    {
+        public SignatureResolution GetResolution(string signatureId) => new(signatureId, 1, 0x1234, null);
     }
 
     private sealed class StubRunner : IValidationScenarioRunner
