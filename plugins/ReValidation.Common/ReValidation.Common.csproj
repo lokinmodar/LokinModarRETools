@@ -6,4 +6,11 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Include="..\ReValidation.OwnerSignatures\Runtime\Proof\OwnerHookProofRecord.cs" Link="OwnerSignatures\Runtime\Proof\OwnerHookProofRecord.cs" />
+    <Compile Include="..\ReValidation.OwnerSignatures\Runtime\Proof\OwnerHookProofStage.cs" Link="OwnerSignatures\Runtime\Proof\OwnerHookProofStage.cs" />
+    <Compile Include="..\ReValidation.OwnerSignatures\Runtime\Proof\OwnerHookProofStatus.cs" Link="OwnerSignatures\Runtime\Proof\OwnerHookProofStatus.cs" />
+    <Compile Include="..\ReValidation.OwnerSignatures\Runtime\Proof\OwnerHookScenarioEvidence.cs" Link="OwnerSignatures\Runtime\Proof\OwnerHookScenarioEvidence.cs" />
+  </ItemGroup>
+
 </Project>

@@ -19,6 +19,18 @@ public sealed class MarkdownEvidenceWriter(EvidencePathBuilder paths) : IEvidenc
         var exportFailures = evidence.ExportFailures.Count == 0
             ? "- None"
             : string.Join(Environment.NewLine, evidence.ExportFailures.Select(failure => $"- `{failure.Kind}`: {failure.FailureReason}"));
+        var ownerHook = evidence.OwnerHook is null
+            ? string.Empty
+            : $$"""
+
+        ## Owner Hook
+
+        - Target: `{{evidence.OwnerHook.TargetId}}`
+
+        | Stage | Status | Summary |
+        | --- | --- | --- |
+        {{string.Join(Environment.NewLine, evidence.OwnerHook.Stages.Select(stage => $"| `{stage.Stage}` | `{stage.Status}` | {stage.Summary} |"))}}
+        """;
         var summaryLine = string.IsNullOrWhiteSpace(evidence.Summary)
             ? string.Empty
             : $"{Environment.NewLine}Reason: `{evidence.Summary}`";
@@ -59,6 +71,7 @@ public sealed class MarkdownEvidenceWriter(EvidencePathBuilder paths) : IEvidenc
         ## Export Failures
 
         {{exportFailures}}
+        {{ownerHook}}
         """;
         await File.WriteAllTextAsync(outputPath, markdown, cancellationToken);
         return new EvidenceWriteResult(Kind, outputPath);

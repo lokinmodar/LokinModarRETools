@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using ReValidation.Common.Models;
+using ReValidation.OwnerSignatures.Runtime.Proof;
 
 namespace ReValidation.Common.Evidence;
 
@@ -16,6 +17,7 @@ public sealed record RunEvidenceEnvelope(
     string? FailedPhase,
     IReadOnlyDictionary<string, string?> RouteMetadata,
     RunProofEvidence Proof,
+    OwnerHookScenarioEvidence? OwnerHook,
     IReadOnlyList<EvidenceExportFailure> ExportFailures)
 {
     public static RunEvidenceEnvelope From(ScenarioRunReport report, ScenarioExecutionContext context) =>
@@ -31,6 +33,7 @@ public sealed record RunEvidenceEnvelope(
             report.FailedPhase,
             EvidenceSanitizer.FilterRouteMetadata(context.Route, report.RouteMetadata),
             RunProofEvidence.From(report),
+            OwnerHookScenarioEvidence.FromCapture(report.Capture?.Data),
             report.Evidence
                 .Where(evidence => !evidence.IsSuccess)
                 .Select(evidence => new EvidenceExportFailure(evidence.Kind, "Evidence export failed."))
