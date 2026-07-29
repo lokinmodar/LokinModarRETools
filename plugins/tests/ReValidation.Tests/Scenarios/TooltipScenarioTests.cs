@@ -70,6 +70,7 @@ public sealed class TooltipScenarioTests
             CreateProofExecutor(probe, "actionTooltip", "action"),
             new FakeTooltipComparisonSource("action", "Sprint"));
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.FullProof);
+        await ((IArmableValidationScenario)scenario).ArmAsync(CancellationToken.None);
 
         var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
             .RunAsync(scenario, context, CancellationToken.None);
@@ -114,6 +115,7 @@ public sealed class TooltipScenarioTests
             CreateProofExecutor(probe, "itemTooltip", "item"),
             new FakeTooltipComparisonSource("item", "Ether"));
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.Compare);
+        await ((IArmableValidationScenario)scenario).ArmAsync(CancellationToken.None);
 
         var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
             .RunAsync(scenario, context, CancellationToken.None);
@@ -138,7 +140,7 @@ public sealed class TooltipScenarioTests
     }
 
     [Fact]
-    public async Task ArmCuePolling_Waits_WhenTooltipIsNotVisible()
+    public async Task ArmCuePolling_Waits_WhenTooltipHookCueIsNotObserved()
     {
         var scenario = new TooltipActionDetailOwnerScenario(
             new ThrowingTooltipProbe("ActionDetail addon is not visible."));
@@ -147,7 +149,7 @@ public sealed class TooltipScenarioTests
         var cue = await armable.PollArmCueAsync(CancellationToken.None);
 
         Assert.False(cue.IsReady);
-        Assert.Equal("ActionDetail addon is not visible.", cue.StatusText);
+        Assert.Equal("Waiting for action tooltip hook cue.", cue.StatusText);
     }
 
     private static OwnerHookProofExecutor CreateProofExecutor(ITooltipProbe probe, string targetId, string detailKind) =>

@@ -26,6 +26,7 @@ public sealed class TooltipOwnerHookMigrationTests
                 new StaticResolutionProvider(new SignatureResolution("itemTooltip", 1, 0x1234, null))),
             new FakeTooltipComparisonSource("item", "Potion"));
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.FullProof);
+        await ((IArmableValidationScenario)scenario).ArmAsync(CancellationToken.None);
 
         var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
             .RunAsync(scenario, context, CancellationToken.None);
@@ -33,6 +34,30 @@ public sealed class TooltipOwnerHookMigrationTests
         Assert.True(report.OverrideAttempted);
         Assert.True(report.AssertResult!.Passed);
         Assert.True(report.RestoreResult!.Passed);
+    }
+
+    [Fact]
+    public async Task TooltipItemOwnerScenario_WithoutObservedHook_DoesNotApplyMutationOrPassFullProof()
+    {
+        var probe = new FakeTooltipProbe("item", "Potion");
+        var scenario = new TooltipItemDetailOwnerScenario(
+            probe,
+            new OwnerHookProofExecutor(
+                OwnerHookTargetRegistryFactory.WithTooltipTargets(probe),
+                new FakeOwnerHookInstaller(new FakeOwnerHook(0, [])),
+                new StaticResolutionProvider(new SignatureResolution("itemTooltip", 1, 0x1234, null))),
+            new FakeTooltipComparisonSource("item", "Potion"));
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.FullProof);
+        var armable = Assert.IsAssignableFrom<IArmableValidationScenario>(scenario);
+        Assert.True(armable.RequiresArming);
+        await armable.ArmAsync(CancellationToken.None);
+
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
+            .RunAsync(scenario, context, CancellationToken.None);
+
+        Assert.False(report.IsSuccess);
+        Assert.Equal(0, probe.ApplyCount);
+        Assert.False(report.AssertResult!.Passed);
     }
 
     private static class OwnerHookTargetRegistryFactory
@@ -53,11 +78,14 @@ public sealed class TooltipOwnerHookMigrationTests
     {
         private string? originalVisibleText;
 
+        public int ApplyCount { get; private set; }
+
         public ValueTask<TooltipSnapshot> CaptureAsync(CancellationToken cancellationToken) =>
             ValueTask.FromResult(new TooltipSnapshot(detailKind, 5333, [visibleText], visibleText));
 
         public ValueTask<ScenarioOverrideTicket?> ApplySentinelOverrideAsync(string sentinel, CancellationToken cancellationToken)
         {
+            ApplyCount++;
             originalVisibleText = visibleText;
             visibleText = sentinel;
             return ValueTask.FromResult<ScenarioOverrideTicket?>(new ScenarioOverrideTicket("applied", new JsonObject()));

@@ -32,6 +32,7 @@ public abstract class OwnerTooltipValidationScenarioBase : IValidationScenario, 
     private readonly string? runtimeBlockingReason;
     private readonly string targetId;
     private TooltipSnapshot? capturedSnapshot;
+    private bool hookEvidenceObserved;
     private OwnerHookSession? session;
 
     protected OwnerTooltipValidationScenarioBase(
@@ -56,6 +57,8 @@ public abstract class OwnerTooltipValidationScenarioBase : IValidationScenario, 
 
     public string ArmPrompt => $"Arm the scenario, then {Definition.Description}";
 
+    public bool RequiresArming => true;
+
     public ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken)
     {
         if (!string.IsNullOrWhiteSpace(runtimeBlockingReason))
@@ -70,26 +73,43 @@ public abstract class OwnerTooltipValidationScenarioBase : IValidationScenario, 
         return ValueTask.FromResult(new ScenarioPreconditionResult(true, null));
     }
 
-    public async ValueTask<ScenarioArmState> PollArmCueAsync(CancellationToken cancellationToken)
+    public ValueTask<ScenarioArmState> PollArmCueAsync(CancellationToken cancellationToken)
     {
-        try
-        {
-            var snapshot = await probe.CaptureAsync(cancellationToken);
-            return string.Equals(snapshot.DetailKind, detailKind, StringComparison.Ordinal)
-                ? new ScenarioArmState(true, "Tooltip cue ready.")
-                : new ScenarioArmState(false, $"Waiting for {detailKind} tooltip cue.");
-        }
-        catch (InvalidOperationException exception)
-        {
-            return new ScenarioArmState(false, exception.Message);
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(session is { Hook.ObservedHitCount: > 0 }
+            ? new ScenarioArmState(true, "Tooltip hook cue observed.")
+            : new ScenarioArmState(false, $"Waiting for {detailKind} tooltip hook cue."));
+    }
+
+    public ValueTask ArmAsync(CancellationToken cancellationToken)
+    {
+        if (session is not null)
+            throw new InvalidOperationException("Tooltip owner proof is already armed.");
+
+        session = (proofExecutor ?? throw new InvalidOperationException("Owner tooltip hook proof executor is required.")).ArmAsync(targetId, cancellationToken);
+        hookEvidenceObserved = false;
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask DisarmAsync(CancellationToken cancellationToken)
+    {
+        if (session is not null)
+            DisposeSession(session);
+
+        session = null;
+        hookEvidenceObserved = false;
+        return ValueTask.CompletedTask;
     }
 
     public async ValueTask<ScenarioCapture> CaptureAsync(ScenarioExecutionContext context, CancellationToken cancellationToken)
     {
-        var activeSession = await proofExecutor!.CaptureAsync(targetId, cancellationToken);
+        var activeSession = RequireArmedSession();
         try
         {
+            await (proofExecutor ?? throw new InvalidOperationException("Owner tooltip hook proof executor is required.")).CaptureArmedAsync(activeSession, cancellationToken);
+            hookEvidenceObserved = HasPassedStage(activeSession, OwnerHookProofStage.HitObserved)
+                && HasPassedStage(activeSession, OwnerHookProofStage.ContextCaptured);
+
             var snapshot = await probe.CaptureAsync(cancellationToken);
             if (!string.Equals(snapshot.DetailKind, detailKind, StringComparison.Ordinal))
                 throw new InvalidOperationException($"Tooltip detail kind mismatch: expected '{detailKind}' but probe captured '{snapshot.DetailKind}'.");
@@ -107,16 +127,16 @@ public abstract class OwnerTooltipValidationScenarioBase : IValidationScenario, 
             if (context.Mode is ValidationMode.CaptureOnly or ValidationMode.Compare)
             {
                 DisposeSession(activeSession);
+                session = null;
+                hookEvidenceObserved = false;
                 capture.Data["ownerHook"] = activeSession.BuildEvidence().ToJson();
-                return capture;
             }
 
-            session = activeSession;
             return capture;
         }
         catch
         {
-            activeSession.Dispose();
+            await DisarmAsync(CancellationToken.None);
             throw;
         }
     }
@@ -144,14 +164,38 @@ public abstract class OwnerTooltipValidationScenarioBase : IValidationScenario, 
 
     public async ValueTask<ScenarioOverrideTicket?> OverrideAsync(ScenarioExecutionContext context, ScenarioCapture capture, CancellationToken cancellationToken)
     {
-        var ticket = await RequireSession().MutationStrategy.ApplyAsync(RequireSession(), cancellationToken);
+        var activeSession = RequireArmedSession();
+        if (!hookEvidenceObserved)
+        {
+            activeSession.AddStage(new OwnerHookProofRecord(
+                OwnerHookProofStage.MutationAttempted,
+                OwnerHookProofStatus.EffectNotProven,
+                "Tooltip mutation was not attempted because hook/context evidence was not observed.",
+                new JsonObject()));
+            UpdateEvidence(capture);
+            return new ScenarioOverrideTicket("Tooltip mutation was not attempted.", new JsonObject { ["status"] = "not_observed" });
+        }
+
+        var ticket = await activeSession.MutationStrategy.ApplyAsync(activeSession, cancellationToken);
         UpdateEvidence(capture);
         return ticket;
     }
 
     public async ValueTask<ScenarioAssertResult?> AssertAsync(ScenarioExecutionContext context, ScenarioCapture capture, ScenarioOverrideTicket? ticket, CancellationToken cancellationToken)
     {
-        var assertion = await RequireSession().MutationStrategy.AssertAsync(RequireSession(), cancellationToken);
+        var activeSession = RequireArmedSession();
+        if (!hookEvidenceObserved)
+        {
+            activeSession.AddStage(new OwnerHookProofRecord(
+                OwnerHookProofStage.EffectAsserted,
+                OwnerHookProofStatus.EffectNotProven,
+                "Tooltip mutation effect is not proven because hook/context evidence was not observed.",
+                new JsonObject()));
+            UpdateEvidence(capture);
+            return new ScenarioAssertResult(false, "Tooltip mutation effect was not proven.", ["hook_context_not_observed"]);
+        }
+
+        var assertion = await activeSession.MutationStrategy.AssertAsync(activeSession, cancellationToken);
         UpdateEvidence(capture);
         return assertion;
     }
@@ -165,18 +209,30 @@ public abstract class OwnerTooltipValidationScenarioBase : IValidationScenario, 
         session = null;
         try
         {
+            if (!hookEvidenceObserved)
+            {
+                activeSession.AddStage(new OwnerHookProofRecord(
+                    OwnerHookProofStage.RestoreAttempted,
+                    OwnerHookProofStatus.EffectNotProven,
+                    "Tooltip restore was not attempted because no mutation was applied.",
+                    new JsonObject()));
+                capture.Data["ownerHook"] = activeSession.BuildEvidence().ToJson();
+                return new ScenarioRestoreResult(true, "No tooltip mutation was applied; restore is not required.", []);
+            }
+
             var restore = await activeSession.MutationStrategy.RestoreAsync(activeSession, cancellationToken);
             capture.Data["ownerHook"] = activeSession.BuildEvidence().ToJson();
             return restore;
         }
         finally
         {
+            hookEvidenceObserved = false;
             activeSession.Dispose();
         }
     }
 
-    private OwnerHookSession RequireSession() =>
-        session ?? throw new InvalidOperationException("Tooltip hook session was not captured.");
+    private OwnerHookSession RequireArmedSession() =>
+        session ?? throw new InvalidOperationException("Tooltip owner proof must be armed before capture.");
 
     private void UpdateEvidence(ScenarioCapture capture)
     {
@@ -191,6 +247,7 @@ public abstract class OwnerTooltipValidationScenarioBase : IValidationScenario, 
 
         var activeSession = session;
         session = null;
+        hookEvidenceObserved = false;
         DisposeSession(activeSession);
         capture.Data["ownerHook"] = activeSession.BuildEvidence().ToJson();
     }
@@ -204,4 +261,7 @@ public abstract class OwnerTooltipValidationScenarioBase : IValidationScenario, 
             new JsonObject()));
         activeSession.Dispose();
     }
+
+    private static bool HasPassedStage(OwnerHookSession session, OwnerHookProofStage stage) =>
+        session.StageRecords.Any(record => record.Stage == stage && record.Status is OwnerHookProofStatus.Passed);
 }

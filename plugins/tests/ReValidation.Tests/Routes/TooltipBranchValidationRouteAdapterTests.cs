@@ -45,10 +45,11 @@ public sealed class TooltipBranchValidationRouteAdapterTests
     public async Task OwnerRoute_BlocksTooltipProofGroup_WhenSignatureResolutionIsNotUnique()
     {
         var group = ProofGroupFactory.CreateActionTooltipGroup();
+        var probe = new FakeTooltipProbe();
         var adapter = new OwnerBranchValidationRouteAdapter(
             new FakeSignatureResolutionProvider(new SignatureResolution("actionTooltip", 2, null, "multiple matches")),
-            CreateOwnerHookProofExecutor(observedHitCount: 1),
-            CreateOwnerHookTargets());
+            CreateOwnerHookProofExecutor(observedHitCount: 1, probe),
+            CreateOwnerHookTargets(probe));
 
         var report = await adapter.RunProofGroupAsync(group, requiredProofLevel: 4, CancellationToken.None);
 
@@ -73,24 +74,56 @@ public sealed class TooltipBranchValidationRouteAdapterTests
     [Fact]
     public async Task OwnerRoute_UsesGenericHookPipelineForTooltipProof()
     {
+        var probe = new FakeTooltipProbe();
         var hook = new FakeOwnerHook(observedHitCount: 1);
         var adapter = new OwnerBranchValidationRouteAdapter(
             new FakeSignatureResolutionProvider(new SignatureResolution("itemTooltip", 1, 0x1234, null)),
-            new OwnerHookProofExecutor(CreateOwnerHookTargets(), new FakeOwnerHookInstaller(hook), new FakeSignatureResolutionProvider(new SignatureResolution("itemTooltip", 1, 0x1234, null))),
-            CreateOwnerHookTargets());
+            new OwnerHookProofExecutor(CreateOwnerHookTargets(probe), new FakeOwnerHookInstaller(hook), new FakeSignatureResolutionProvider(new SignatureResolution("itemTooltip", 1, 0x1234, null))),
+            CreateOwnerHookTargets(probe));
 
         var report = await adapter.RunProofGroupAsync(ProofGroupFactory.CreateItemTooltipGroup(), requiredProofLevel: 4, CancellationToken.None);
 
         Assert.All(report.Targets, target => Assert.Equal("passed", target.Verdict));
+        Assert.Equal(1, probe.ApplyCount);
+        Assert.Equal(1, probe.AssertCount);
+        Assert.Equal(1, probe.RestoreCount);
         Assert.True(hook.IsDisposed);
+    }
+
+    [Fact]
+    public async Task OwnerRoute_WithoutObservedHook_ReportsNoEffectProof()
+    {
+        var probe = new FakeTooltipProbe();
+        var adapter = new OwnerBranchValidationRouteAdapter(
+            new FakeSignatureResolutionProvider(new SignatureResolution("itemTooltip", 1, 0x1234, null)),
+            new OwnerHookProofExecutor(CreateOwnerHookTargets(probe), new FakeOwnerHookInstaller(new FakeOwnerHook(observedHitCount: 0)), new FakeSignatureResolutionProvider(new SignatureResolution("itemTooltip", 1, 0x1234, null))),
+            CreateOwnerHookTargets(probe));
+
+        var report = await adapter.RunProofGroupAsync(ProofGroupFactory.CreateItemTooltipGroup(), requiredProofLevel: 4, CancellationToken.None);
+
+        var target = Assert.Single(report.Targets);
+        Assert.Equal("not-observed", target.Verdict);
+        Assert.False(target.EffectApplied);
+        Assert.False(target.EffectRestored);
+        Assert.Equal(0, probe.ApplyCount);
     }
 
     private sealed class FakeTooltipProbe : ITooltipProbe
     {
         public int RestoreCount { get; private set; }
+        public int ApplyCount { get; private set; }
+        public int AssertCount { get; private set; }
         public ValueTask<TooltipSnapshot> CaptureAsync(CancellationToken cancellationToken) => ValueTask.FromResult(new TooltipSnapshot("item", 1, ["ready"], "ready"));
-        public ValueTask<ScenarioOverrideTicket?> ApplySentinelOverrideAsync(string sentinel, CancellationToken cancellationToken) => ValueTask.FromResult<ScenarioOverrideTicket?>(new ScenarioOverrideTicket("applied", new()));
-        public ValueTask<ScenarioAssertResult?> AssertSentinelAsync(string sentinel, CancellationToken cancellationToken) => ValueTask.FromResult<ScenarioAssertResult?>(new ScenarioAssertResult(true, "asserted", []));
+        public ValueTask<ScenarioOverrideTicket?> ApplySentinelOverrideAsync(string sentinel, CancellationToken cancellationToken)
+        {
+            ApplyCount++;
+            return ValueTask.FromResult<ScenarioOverrideTicket?>(new ScenarioOverrideTicket("applied", new()));
+        }
+        public ValueTask<ScenarioAssertResult?> AssertSentinelAsync(string sentinel, CancellationToken cancellationToken)
+        {
+            AssertCount++;
+            return ValueTask.FromResult<ScenarioAssertResult?>(new ScenarioAssertResult(true, "asserted", []));
+        }
         public ValueTask<ScenarioRestoreResult> RestoreAsync(CancellationToken cancellationToken)
         {
             RestoreCount++;
@@ -115,16 +148,16 @@ public sealed class TooltipBranchValidationRouteAdapterTests
         }
     }
 
-    private static OwnerHookTargetRegistry CreateOwnerHookTargets() =>
+    private static OwnerHookTargetRegistry CreateOwnerHookTargets(ITooltipProbe probe) =>
         new(
         [
-            new OwnerHookTargetDefinition("itemTooltip", "itemTooltip", "Open an item tooltip.", new TooltipHookContextCapture("item"), new NoOpHookMutationStrategy("not used")),
-            new OwnerHookTargetDefinition("actionTooltip", "actionTooltip", "Open an action tooltip.", new TooltipHookContextCapture("action"), new NoOpHookMutationStrategy("not used")),
+            new OwnerHookTargetDefinition("itemTooltip", "itemTooltip", "Open an item tooltip.", new TooltipHookContextCapture("item"), new TooltipOwnerMutationStrategy(probe)),
+            new OwnerHookTargetDefinition("actionTooltip", "actionTooltip", "Open an action tooltip.", new TooltipHookContextCapture("action"), new TooltipOwnerMutationStrategy(probe)),
         ]);
 
-    private static OwnerHookProofExecutor CreateOwnerHookProofExecutor(int observedHitCount) =>
+    private static OwnerHookProofExecutor CreateOwnerHookProofExecutor(int observedHitCount, ITooltipProbe probe) =>
         new(
-            CreateOwnerHookTargets(),
+            CreateOwnerHookTargets(probe),
             new FakeOwnerHookInstaller(new FakeOwnerHook(observedHitCount)),
             new FakeSignatureResolutionProvider(new SignatureResolution("itemTooltip", 1, 0x1234, null)));
 
@@ -172,7 +205,9 @@ public sealed class TooltipBranchValidationRouteAdapterTests
 
         public bool IsDisposed { get; private set; }
 
-        public IReadOnlyList<JsonObject> DrainObservedContexts() => [new JsonObject { ["detailKind"] = "item" }];
+        public IReadOnlyList<JsonObject> DrainObservedContexts() => ObservedHitCount > 0
+            ? [new JsonObject { ["detailKind"] = "item" }]
+            : [];
 
         public void Enable() { }
 

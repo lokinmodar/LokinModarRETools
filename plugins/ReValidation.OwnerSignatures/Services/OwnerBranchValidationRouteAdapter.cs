@@ -43,19 +43,87 @@ public sealed class OwnerBranchValidationRouteAdapter(
             return Blocked(group, "Signature resolution was not unique.", resolution);
 
         using var session = await proofExecutor.CaptureAsync(targetId, cancellationToken);
+        var hookInstalled = HasPassedStage(session, OwnerHookProofStage.HookInstalled);
+        var hookObserved = HasPassedStage(session, OwnerHookProofStage.HitObserved)
+            && HasPassedStage(session, OwnerHookProofStage.ContextCaptured);
+        if (!hookObserved)
+            return CreateReport(group, resolution, session, "not-observed", hookInstalled, false, false, "Tooltip hook/context evidence was not observed.");
+
+        var effectApplied = false;
+        var effectAsserted = false;
+        var effectRestored = false;
+        string? reason = null;
+        try
+        {
+            var ticket = await session.MutationStrategy.ApplyAsync(session, cancellationToken);
+            effectApplied = ticket is not null;
+            if (!effectApplied)
+                reason = "Tooltip sentinel override was not applied.";
+            else
+            {
+                var assertion = await session.MutationStrategy.AssertAsync(session, cancellationToken);
+                effectAsserted = assertion is { Passed: true };
+                if (!effectAsserted)
+                    reason = assertion?.Summary ?? "Tooltip sentinel was not visibly asserted.";
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            reason = exception.Message;
+        }
+        finally
+        {
+            try
+            {
+                var restore = await session.MutationStrategy.RestoreAsync(session, CancellationToken.None);
+                effectRestored = effectApplied && restore.Passed;
+                if (!restore.Passed)
+                    reason ??= restore.Summary;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                reason ??= exception.Message;
+            }
+        }
+
+        var passed = effectApplied && effectAsserted && effectRestored;
+        return CreateReport(
+            group,
+            resolution,
+            session,
+            passed ? "passed" : "effect-not-proven",
+            hookInstalled,
+            effectApplied,
+            effectRestored,
+            reason ?? "Tooltip controlled mutation lifecycle was not proven.");
+    }
+
+    private static ProofGroupRunReport CreateReport(
+        ProofGroupDefinition group,
+        SignatureResolution resolution,
+        OwnerHookSession session,
+        string verdict,
+        bool hookInstalled,
+        bool effectApplied,
+        bool effectRestored,
+        string? blockingReason)
+    {
         var targetsReport = group.Targets
             .Select(target => new TargetProofRecord(
                 target.TargetId,
-                session.StageRecords.Any(stage => stage.Stage is OwnerHookProofStage.HitObserved && stage.Status is OwnerHookProofStatus.Passed) ? "passed" : "not-observed",
+                verdict,
                 resolution.MatchCount,
                 resolution.Rva is null ? null : checked((long)resolution.Rva.Value),
                 session.Hook.ObservedHitCount,
-                session.StageRecords.Any(stage => stage.Stage is OwnerHookProofStage.HookInstalled && stage.Status is OwnerHookProofStatus.Passed),
-                true,
-                true,
-                null))
+                hookInstalled,
+                effectApplied,
+                effectRestored,
+                blockingReason))
             .ToArray();
-        return new ProofGroupRunReport(group.GroupId, targetsReport, "Owner tooltip proof completed through the generic owner hook pipeline.");
+        var summary = verdict is "passed"
+            ? "Owner tooltip proof completed through the generic owner hook pipeline."
+            : "Owner tooltip proof did not demonstrate the complete controlled lifecycle.";
+        return new ProofGroupRunReport(group.GroupId, targetsReport, summary);
     }
 
     private static ProofGroupRunReport Blocked(ProofGroupDefinition group, string reason, SignatureResolution? resolution = null) =>
@@ -63,4 +131,7 @@ public sealed class OwnerBranchValidationRouteAdapter(
             group.GroupId,
             group.Targets.Select(target => new TargetProofRecord(target.TargetId, "blocked", resolution?.MatchCount ?? 0, resolution?.Rva is null ? null : checked((long)resolution.Rva.Value), 0, false, false, false, reason)).ToArray(),
             reason);
+
+    private static bool HasPassedStage(OwnerHookSession session, OwnerHookProofStage stage) =>
+        session.StageRecords.Any(record => record.Stage == stage && record.Status is OwnerHookProofStatus.Passed);
 }
