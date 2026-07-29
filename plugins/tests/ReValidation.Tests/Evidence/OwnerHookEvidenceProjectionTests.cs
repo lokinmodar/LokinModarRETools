@@ -93,4 +93,122 @@ public sealed class OwnerHookEvidenceProjectionTests
         Assert.Contains("- Target: `journalProvider`", markdown, StringComparison.Ordinal);
         Assert.Contains("| `SignatureResolved` | `Passed` | Unique journalProvider signature resolved. |", markdown, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void RunEvidenceEnvelope_DoesNotProjectOwnerHookForLocalRoute()
+    {
+        var report = CreateReport(new JsonObject
+        {
+            ["ownerHook"] = CreateOwnerHook("journalProvider", CreateStage("SignatureResolved", "Passed", "Unique owner signature resolved.")),
+        });
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.LocalClientStructs, ValidationMode.CaptureOnly);
+
+        var envelope = RunEvidenceEnvelope.From(report, context);
+
+        Assert.Null(envelope.OwnerHook);
+    }
+
+    [Fact]
+    public void RunEvidenceEnvelope_ProjectsOnlyAllowlistedOwnerHookData()
+    {
+        var report = CreateReport(new JsonObject
+        {
+            ["ownerHook"] = CreateOwnerHook(
+                "journalProvider",
+                CreateStage(
+                    "HitObserved",
+                    "Passed",
+                    "Owner hook observed | runtime hits.",
+                    new JsonObject
+                    {
+                        ["observedHitCount"] = 2,
+                        ["secret"] = "must-not-export",
+                    })),
+        });
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.CaptureOnly);
+
+        var envelope = RunEvidenceEnvelope.From(report, context);
+
+        var stage = Assert.Single(envelope.OwnerHook!.Stages);
+        Assert.Equal(2, stage.Data["observedHitCount"]!.GetValue<int>());
+        Assert.DoesNotContain("secret", stage.Data);
+        Assert.Equal("Owner hook observed | runtime hits.", stage.Summary);
+    }
+
+    [Fact]
+    public void RunEvidenceEnvelope_RejectsMalformedOwnerHookStages()
+    {
+        var report = CreateReport(new JsonObject
+        {
+            ["ownerHook"] = CreateOwnerHook(
+                "journalProvider",
+                CreateStage("SignatureResolved", "Passed", "Unique owner signature resolved."),
+                CreateStage("UnknownStage", "Passed", "Unknown stage.")),
+        });
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.CaptureOnly);
+
+        var envelope = RunEvidenceEnvelope.From(report, context);
+
+        Assert.Null(envelope.OwnerHook);
+    }
+
+    [Theory]
+    [InlineData("journal provider", "Unique owner signature resolved.")]
+    [InlineData("journalProvider", "Unsafe\nsummary")]
+    public void RunEvidenceEnvelope_RejectsUnsafeOwnerHookText(string targetId, string summary)
+    {
+        var report = CreateReport(new JsonObject
+        {
+            ["ownerHook"] = CreateOwnerHook(targetId, CreateStage("SignatureResolved", "Passed", summary)),
+        });
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.CaptureOnly);
+
+        var envelope = RunEvidenceEnvelope.From(report, context);
+
+        Assert.Null(envelope.OwnerHook);
+    }
+
+    [Fact]
+    public async Task MarkdownWriter_EscapesOwnerHookSummaryCells()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var report = CreateReport(new JsonObject
+        {
+            ["ownerHook"] = CreateOwnerHook(
+                "journalProvider",
+                CreateStage("HitObserved", "Passed", "Owner hook observed | runtime hits.")),
+        });
+        var context = ScenarioExecutionContext.CreateForTests(
+            ValidationRoute.OwnerSignatures,
+            ValidationMode.CaptureOnly,
+            root);
+
+        var output = await new MarkdownEvidenceWriter(new EvidencePathBuilder()).WriteAsync(report, context, CancellationToken.None);
+        var markdown = await File.ReadAllTextAsync(output.OutputPath);
+
+        Assert.Contains("| `HitObserved` | `Passed` | Owner hook observed \\| runtime hits. |", markdown, StringComparison.Ordinal);
+    }
+
+    private static ScenarioRunReport CreateReport(JsonObject captureData) =>
+        ScenarioRunReport.Started(
+                new ValidationScenarioDefinition("journal.hook-validation", "Journal Hook Validation"),
+                ValidationRoute.OwnerSignatures,
+                ValidationMode.CaptureOnly)
+            .WithPrecondition(new ScenarioPreconditionResult(true, null))
+            .WithCapture(new ScenarioCapture("Journal hook stages captured", captureData))
+            .MarkSuccess();
+
+    private static JsonObject CreateOwnerHook(string targetId, params JsonObject[] stages) => new()
+    {
+        ["targetId"] = targetId,
+        ["stages"] = new JsonArray(stages),
+    };
+
+    private static JsonObject CreateStage(string stage, string status, string summary, JsonObject? data = null) => new()
+    {
+        ["stage"] = stage,
+        ["status"] = status,
+        ["summary"] = summary,
+        ["data"] = data,
+    };
 }

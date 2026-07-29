@@ -33,7 +33,9 @@ public sealed record RunEvidenceEnvelope(
             report.FailedPhase,
             EvidenceSanitizer.FilterRouteMetadata(context.Route, report.RouteMetadata),
             RunProofEvidence.From(report),
-            OwnerHookScenarioEvidence.FromCapture(report.Capture?.Data),
+            context.Route is ValidationRoute.OwnerSignatures
+                ? OwnerHookScenarioEvidence.FromCapture(report.Capture?.Data)
+                : null,
             report.Evidence
                 .Where(evidence => !evidence.IsSuccess)
                 .Select(evidence => new EvidenceExportFailure(evidence.Kind, "Evidence export failed."))

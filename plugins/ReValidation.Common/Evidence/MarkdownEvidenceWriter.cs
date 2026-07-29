@@ -29,7 +29,7 @@ public sealed class MarkdownEvidenceWriter(EvidencePathBuilder paths) : IEvidenc
 
         | Stage | Status | Summary |
         | --- | --- | --- |
-        {{string.Join(Environment.NewLine, evidence.OwnerHook.Stages.Select(stage => $"| `{stage.Stage}` | `{stage.Status}` | {stage.Summary} |"))}}
+        {{string.Join(Environment.NewLine, evidence.OwnerHook.Stages.Select(stage => $"| `{stage.Stage}` | `{stage.Status}` | {EscapeTableCell(stage.Summary)} |"))}}
         """;
         var summaryLine = string.IsNullOrWhiteSpace(evidence.Summary)
             ? string.Empty
@@ -76,4 +76,10 @@ public sealed class MarkdownEvidenceWriter(EvidencePathBuilder paths) : IEvidenc
         await File.WriteAllTextAsync(outputPath, markdown, cancellationToken);
         return new EvidenceWriteResult(Kind, outputPath);
     }
+
+    private static string EscapeTableCell(string value) =>
+        value.Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("|", "\\|", StringComparison.Ordinal)
+            .Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal);
 }
