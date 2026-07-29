@@ -184,6 +184,28 @@ public sealed class ValidationWindowControllerTests
     }
 
     [Fact]
+    public async Task ArmSelectedScenario_JournalHookValidation_PublishesJournalArmPrompt()
+    {
+        var scenario = new ArmableStubScenario(
+            "journal.hook-validation",
+            "Open the Journal list.",
+            new ScenarioArmState(false, "Waiting for Journal cue."));
+        var controller = new ValidationWindowController(
+            state: new ValidationWindowState(),
+            registry: ValidationScenarioRegistry.ForTests(scenario),
+            runner: new StubRunner(),
+            timeProvider: new FakeTimeProvider());
+
+        controller.State.SelectScenario("journal.hook-validation");
+
+        await controller.ArmSelectedScenarioAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+
+        Assert.True(controller.State.IsArmed);
+        Assert.Equal("Armed", controller.State.StatusText);
+        Assert.Equal("Open the Journal list.", controller.State.StatusDetailText);
+    }
+
+    [Fact]
     public async Task ArmSelectedScenario_TimesOut_WhenCueNeverBecomesReady()
     {
         var scenario = new ArmableStubScenario(
@@ -451,12 +473,17 @@ public sealed class ValidationWindowControllerTests
         public ValueTask<ScenarioRestoreResult> RestoreAsync(ScenarioExecutionContext context, ScenarioCapture capture, ScenarioOverrideTicket? ticket, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
-    private sealed class ArmableStubScenario(string id, params ScenarioArmState[] cueStates) : IValidationScenario, IArmableValidationScenario
+    private sealed class ArmableStubScenario(string id, string armPrompt, params ScenarioArmState[] cueStates) : IValidationScenario, IArmableValidationScenario
     {
         private readonly Queue<ScenarioArmState> cueStates = new(cueStates);
 
+        public ArmableStubScenario(string id, params ScenarioArmState[] cueStates)
+            : this(id, "Hover the tooltip in game.", cueStates)
+        {
+        }
+
         public ValidationScenarioDefinition Definition { get; } = new(id, id);
-        public string ArmPrompt => "Hover the tooltip in game.";
+        public string ArmPrompt => armPrompt;
         public int PollCount { get; private set; }
         public int ArmCount { get; private set; }
         public int DisarmCount { get; private set; }

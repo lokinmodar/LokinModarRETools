@@ -6,6 +6,10 @@ using ReValidation.Common.Models;
 using ReValidation.Common.Scenarios;
 using ReValidation.LocalClientStructs.Scenarios;
 using ReValidation.LocalClientStructs.Services;
+using ReValidation.OwnerSignatures;
+using ReValidation.OwnerSignatures.Runtime;
+using ReValidation.OwnerSignatures.Runtime.HookTargets;
+using ReValidation.OwnerSignatures.Runtime.Proof;
 using ReValidation.OwnerSignatures.Scenarios;
 using ReValidation.OwnerSignatures.Services;
 using Xunit;
@@ -14,6 +18,19 @@ namespace ReValidation.Tests.Scenarios;
 
 public sealed class JournalCompletedEntriesScenarioTests
 {
+    [Fact]
+    public void OwnerScenarioComposition_ListsJournalHookValidationAndMutationProofSeparatelyFromCompletedEntries()
+    {
+        var registry = OwnerSignaturesScenarioComposition.CreateRegistry(
+            OwnerScenarioDependenciesFactory.ForHookPipeline());
+
+        var ids = registry.Scenarios.Select(scenario => scenario.Definition.Id).OrderBy(id => id).ToArray();
+
+        Assert.Contains("journal.completed-entries", ids);
+        Assert.Contains("journal.hook-validation", ids);
+        Assert.Contains("journal.mutation-proof", ids);
+    }
+
     [Fact]
     public void Compare_Fails_WhenEntryTextDiffers()
     {
@@ -253,5 +270,49 @@ public sealed class JournalCompletedEntriesScenarioTests
 
         public ValueTask<EvidenceWriteResult> WriteAsync(ScenarioRunReport report, ScenarioExecutionContext context, CancellationToken cancellationToken) =>
             ValueTask.FromResult(new EvidenceWriteResult("null", string.Empty));
+    }
+
+    private static class OwnerScenarioDependenciesFactory
+    {
+        public static OwnerSignaturesScenarioDependencies ForHookPipeline()
+        {
+            var hookTargets = new OwnerHookTargetRegistry(
+            [
+                new OwnerHookTargetDefinition(
+                    JournalHookTargetIds.JournalProvider,
+                    "journalProvider",
+                    "Open the Journal list.",
+                    new JournalProviderHookContextCapture(),
+                    new NoOpHookMutationStrategy("Not used by composition.")),
+            ]);
+            var resolutions = new[] { new SignatureResolution("journalProvider", 1, 0x1234, null) };
+
+            return new OwnerSignaturesScenarioDependencies(
+                new FakeJournalProbe("The Company You Keep"),
+                new FakeTooltipProbe(),
+                new FakeTooltipProbe(),
+                resolutions,
+                HookProofExecutor: new OwnerHookProofExecutor(hookTargets, new FakeOwnerHookInstaller(), new FakeResolutionProvider(resolutions)),
+                HookTargets: hookTargets);
+        }
+    }
+
+    private sealed class FakeTooltipProbe : ITooltipProbe
+    {
+        public ValueTask<TooltipSnapshot> CaptureAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ValueTask<ScenarioOverrideTicket?> ApplySentinelOverrideAsync(string sentinel, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ValueTask<ScenarioAssertResult?> AssertSentinelAsync(string sentinel, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ValueTask<ScenarioRestoreResult> RestoreAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class FakeOwnerHookInstaller : IOwnerHookInstaller
+    {
+        public IOwnerHook Install(OwnerHookTargetDefinition target, SignatureResolution resolution) => throw new NotSupportedException();
+    }
+
+    private sealed class FakeResolutionProvider(IReadOnlyList<SignatureResolution> resolutions) : ISignatureResolutionProvider
+    {
+        public SignatureResolution GetResolution(string signatureId) =>
+            resolutions.Single(resolution => string.Equals(resolution.Id, signatureId, StringComparison.Ordinal));
     }
 }

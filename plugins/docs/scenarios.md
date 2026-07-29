@@ -28,6 +28,21 @@ that changes the quest name consumed by the Journal list itself.
 The local route also blocks when local ClientStructs wiring is unavailable. The owner-signature route
 also blocks when any scenario-required signature is unresolved or non-unique.
 
+## Journal.HookValidation
+
+This owner-route scenario explicitly validates the current `journalProvider` finding. Arm the scenario,
+open the Journal list as the cue, and confirm evidence for the resolved signature, installed hook,
+observed hit, and allowlisted context. The scenario disarms after it captures this evidence; it does not
+compare or mutate `Journal.CompletedEntries`.
+
+## Journal.MutationProof
+
+This owner-route scenario makes a controlled mutation attempt through the same `journalProvider` hook
+pipeline. Use the explicit arm -> Journal cue -> capture/assert -> disarm flow. A result of
+`effect_not_proven` is an honest intermediate result when the controlled attempt cannot demonstrate the
+expected effect; it is not hidden as a pass or failure. This scenario remains distinct from
+`Journal.CompletedEntries`, which captures and compares completed quest data.
+
 ## Tooltip.ItemDetail and Tooltip.ActionDetail
 
 Open an item or action tooltip. Both routes capture only the fixed detail kind and resolved ID for
@@ -50,10 +65,12 @@ not depend on a transient hover cue.
    local props/project wiring for the local route, or unique signature resolutions for the owner route.
 3. Select the scenario and the required validation mode: `CaptureOnly`, `Compare`, `OverrideAssert`, or `FullProof`.
 4. For `Journal.CompletedEntries`, prepare the Journal UI cue and select `Run selected scenario`.
-5. For tooltip scenarios, prefer `Arm selected scenario`, perform the hover inside the configured timeout,
+5. For `Journal.HookValidation` or `Journal.MutationProof`, arm the scenario, open the Journal list,
+   confirm the hook evidence or mutation result, and let the scenario disarm.
+6. For tooltip scenarios, prefer `Arm selected scenario`, perform the hover inside the configured timeout,
    and wait for the status to move from `Armed` to `Running`.
-6. Wait for the window status to change from `Running` to `Passed`, `Failed`, `Timed out`, or `Cancelled`.
-7. Open the JSON and Markdown paths listed in the window and preserve both artifacts with the review notes.
+7. Wait for the window status to change from `Running` to `Passed`, `Failed`, `Timed out`, or `Cancelled`.
+8. Open the JSON and Markdown paths listed in the window and preserve both artifacts with the review notes.
 
 Do not bypass a blocked run. A block means one of three things:
 

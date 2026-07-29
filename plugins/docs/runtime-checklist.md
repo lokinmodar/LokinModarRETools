@@ -66,6 +66,25 @@ Run steps:
 3. Run `Compare` only when an independent comparison source is configured.
 4. Treat `OverrideAssert` and `FullProof` blocks as expected for now.
 
+### Journal.HookValidation
+
+1. Confirm `signature:journalProvider` reports exactly one match before arming.
+2. Open the Journal list.
+3. Select `Journal.HookValidation` and arm the scenario.
+4. Open or refresh the Journal list to provide the explicit cue.
+5. Confirm the evidence reports the resolved signature, installed hook, observed hit, and captured context.
+6. Confirm the scenario disarms after the capture.
+
+### Journal.MutationProof
+
+1. Confirm `signature:journalProvider` reports exactly one match before arming.
+2. Open the Journal list.
+3. Select `Journal.MutationProof` and arm the scenario.
+4. Open or refresh the Journal list to provide the explicit cue.
+5. Confirm the controlled mutation attempt captures and asserts through the owner hook pipeline.
+6. Confirm the scenario disarms after capture or assertion.
+7. Treat `effect_not_proven` as an honest intermediate result, not as a hidden failure.
+
 ### Tooltip.ItemDetail
 
 1. Select the tooltip scenario and mode first.

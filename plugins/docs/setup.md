@@ -46,6 +46,15 @@ The current route requires unique matches for:
 
 If any required signature resolves to zero or multiple matches, the route blocks the scenario rather than downgrading silently.
 
+`Journal.HookValidation` and `Journal.MutationProof` require the owned `journalProvider` signature to
+resolve uniquely before the hook can be armed. The operator must open the Journal list as the explicit
+runtime cue, wait for the hook hit and allowlisted context evidence, then let the scenario disarm after
+capture or assertion. Do not treat an unarmed or non-unique signature as a valid Journal proof attempt.
+
+The owner item and action tooltip scenarios use this same owner hook pipeline. Their `itemTooltip` and
+`actionTooltip` signatures must likewise resolve uniquely before arming the hover cue; they do not use a
+separate tooltip-only hook path.
+
 ## Loading The Plugins
 
 Load one route plugin at a time and open its window with the corresponding command:
