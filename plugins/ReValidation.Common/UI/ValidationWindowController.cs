@@ -67,8 +67,15 @@ public sealed class ValidationWindowController : IDisposable
     public async Task RunSelectedScenarioAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-        armedScenarioRequest = null;
-        await RunScenarioAsync(CreateSelectionSnapshot(), cancellationToken);
+        var selection = CreateSelectionSnapshot();
+        if (TryGetSelectedArmableScenario(out var armableScenario) && armableScenario!.RequiresArming)
+        {
+            State.SetCompleted("Blocked", "This scenario must be armed before it can run.", Array.Empty<string>());
+            return;
+        }
+
+        await DisarmSelectedScenarioAsync(cancellationToken);
+        await RunScenarioAsync(selection, cancellationToken);
     }
 
     public async Task ArmSelectedScenarioAsync(TimeSpan timeout, CancellationToken cancellationToken)
@@ -93,6 +100,7 @@ public sealed class ValidationWindowController : IDisposable
             return;
         }
 
+        await armableScenario!.ArmAsync(cancellationToken);
         armedScenarioRequest = new ArmedScenarioRequest(
             selection,
             timeProvider.GetUtcNow().Add(timeout),
@@ -101,11 +109,19 @@ public sealed class ValidationWindowController : IDisposable
         State.SetArmed("Armed", armableScenario!.ArmPrompt);
     }
 
-    public void DisarmSelectedScenario()
+    public void DisarmSelectedScenario() =>
+        DisarmSelectedScenarioAsync(CancellationToken.None).GetAwaiter().GetResult();
+
+    public async Task DisarmSelectedScenarioAsync(CancellationToken cancellationToken)
     {
-        if (armedScenarioRequest is not null)
-            diagnosticsSink.Debug($"arm.disarmed scenario={armedScenarioRequest.Selection.ScenarioId}");
+        var request = armedScenarioRequest;
         armedScenarioRequest = null;
+        if (request is not null)
+        {
+            await DisarmScenarioAsync(request, cancellationToken);
+            diagnosticsSink.Debug($"arm.disarmed scenario={request.Selection.ScenarioId}");
+        }
+
         if (State.IsArmed)
             State.Reset();
     }
@@ -129,6 +145,7 @@ public sealed class ValidationWindowController : IDisposable
             if (timeProvider.GetUtcNow() >= request.DeadlineUtc)
             {
                 armedScenarioRequest = null;
+                await DisarmScenarioAsync(request, pulseCancellationSource.Token);
                 diagnosticsSink.Debug($"arm.timeout scenario={request.Selection.ScenarioId}");
                 State.SetCompleted("Timed out", "Tooltip cue did not become ready within the arm window.", Array.Empty<string>());
                 return;
@@ -138,6 +155,7 @@ public sealed class ValidationWindowController : IDisposable
             if (scenario is not IArmableValidationScenario armableScenario)
             {
                 armedScenarioRequest = null;
+                await DisarmScenarioAsync(request, pulseCancellationSource.Token);
                 diagnosticsSink.Debug($"arm.failed scenario={request.Selection.ScenarioId} reason=\"Selected scenario no longer supports arming.\"");
                 State.SetCompleted("Failed", string.Empty, Array.Empty<string>());
                 return;
@@ -160,13 +178,19 @@ public sealed class ValidationWindowController : IDisposable
         }
         catch (OperationCanceledException)
         {
+            var request = armedScenarioRequest;
             armedScenarioRequest = null;
+            if (request is not null)
+                await DisarmScenarioAsync(request, CancellationToken.None);
             diagnosticsSink.Debug("arm.cancelled");
             State.SetCompleted("Cancelled", string.Empty, Array.Empty<string>());
         }
         catch (Exception)
         {
+            var request = armedScenarioRequest;
             armedScenarioRequest = null;
+            if (request is not null)
+                await DisarmScenarioAsync(request, CancellationToken.None);
             diagnosticsSink.Debug("arm.failed");
             State.SetCompleted("Failed", string.Empty, Array.Empty<string>());
         }
@@ -180,7 +204,10 @@ public sealed class ValidationWindowController : IDisposable
     {
         if (Interlocked.Exchange(ref disposed, 1) == 0)
         {
+            var request = armedScenarioRequest;
             armedScenarioRequest = null;
+            if (request is not null)
+                DisarmScenarioAsync(request, CancellationToken.None).AsTask().GetAwaiter().GetResult();
             lifetimeCancellationSource.Cancel();
         }
     }
@@ -232,6 +259,13 @@ public sealed class ValidationWindowController : IDisposable
 
         scenario = armableScenario;
         return true;
+    }
+
+    private async ValueTask DisarmScenarioAsync(ArmedScenarioRequest request, CancellationToken cancellationToken)
+    {
+        if (registry.TryGet(request.Selection.ScenarioId, out var scenario)
+            && scenario is IArmableValidationScenario armableScenario)
+            await armableScenario.DisarmAsync(cancellationToken);
     }
 
     private static string GetStatusText(ScenarioRunReport report)

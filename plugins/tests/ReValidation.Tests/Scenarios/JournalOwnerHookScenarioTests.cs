@@ -1,4 +1,7 @@
 using System.Text.Json.Nodes;
+using ReValidation.Common.Abstractions;
+using ReValidation.Common.Evidence;
+using ReValidation.Common.Execution;
 using ReValidation.Common.Models;
 using ReValidation.OwnerSignatures.Runtime;
 using ReValidation.OwnerSignatures.Runtime.HookTargets;
@@ -12,8 +15,9 @@ namespace ReValidation.Tests.Scenarios;
 public sealed class JournalOwnerHookScenarioTests
 {
     [Fact]
-    public async Task JournalHookValidation_Capture_ExportsExplicitOwnerHookStages()
+    public async Task JournalHookValidation_ArmsBeforeCueThenCapturesAndDisposes()
     {
+        var hook = new FakeOwnerHook();
         var scenario = new JournalHookValidationOwnerScenario(
             new OwnerHookProofExecutor(
                 new OwnerHookTargetRegistry(
@@ -25,15 +29,92 @@ public sealed class JournalOwnerHookScenarioTests
                         new PassthroughHookContextCapture(),
                         new NoOpHookMutationStrategy("Mutation proof is not configured.")),
                 ]),
-                new FakeOwnerHookInstaller(new FakeOwnerHook(1, [new JsonObject { ["questId"] = 42 }])),
+                new FakeOwnerHookInstaller(hook),
                 new StaticResolutionProvider(new SignatureResolution("journalProvider", 1, 0x1234, null))),
             JournalHookTargetIds.JournalProvider);
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.CaptureOnly);
+        var armable = Assert.IsAssignableFrom<IArmableValidationScenario>(scenario);
 
-        var capture = await scenario.CaptureAsync(context, CancellationToken.None);
+        await armable.ArmAsync(CancellationToken.None);
+        Assert.False((await armable.PollArmCueAsync(CancellationToken.None)).IsReady);
 
-        Assert.Equal("journalProvider", capture.Data["ownerHook"]!["targetId"]!.GetValue<string>());
-        Assert.Equal("Passed", capture.Data["ownerHook"]!["stages"]![0]!["status"]!.GetValue<string>());
+        hook.Observe(new JsonObject { ["questId"] = 42 });
+        Assert.True((await armable.PollArmCueAsync(CancellationToken.None)).IsReady);
+
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
+            .RunAsync(scenario, context, CancellationToken.None);
+
+        Assert.True(report.IsSuccess);
+        Assert.Equal("journalProvider", report.Capture!.Data["ownerHook"]!["targetId"]!.GetValue<string>());
+        Assert.Equal("Passed", report.Capture.Data["ownerHook"]!["stages"]![0]!["status"]!.GetValue<string>());
+        Assert.Equal("RestoreAttempted", GetFinalStageName(report.Capture.Data));
+        Assert.True(hook.IsDisposed);
+    }
+
+    [Theory]
+    [InlineData(ValidationMode.CaptureOnly)]
+    [InlineData(ValidationMode.Compare)]
+    public async Task JournalMutationProof_NonMutationModes_DisposeArmedHook(ValidationMode mode)
+    {
+        var hook = new FakeOwnerHook();
+        var scenario = new JournalMutationProofOwnerScenario(
+            new OwnerHookProofExecutor(
+                new OwnerHookTargetRegistry(
+                [
+                    new OwnerHookTargetDefinition(
+                        JournalHookTargetIds.JournalProvider,
+                        "journalProvider",
+                        "Open the Journal list.",
+                        new PassthroughHookContextCapture(),
+                        new NoOpHookMutationStrategy("Mutation proof is not configured.")),
+                ]),
+                new FakeOwnerHookInstaller(hook),
+                new StaticResolutionProvider(new SignatureResolution("journalProvider", 1, 0x1234, null))),
+            JournalHookTargetIds.JournalProvider);
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, mode);
+
+        await ((IArmableValidationScenario)scenario).ArmAsync(CancellationToken.None);
+        hook.Observe(new JsonObject { ["questId"] = 42 });
+
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
+            .RunAsync(scenario, context, CancellationToken.None);
+
+        Assert.NotNull(report.Capture);
+        Assert.Equal("RestoreAttempted", GetFinalStageName(report.Capture!.Data));
+        Assert.True(hook.IsDisposed);
+    }
+
+    [Fact]
+    public async Task JournalHookValidation_CaptureWithoutArm_RejectsImmediateDrain()
+    {
+        var scenario = CreateHookValidationScenario(new FakeOwnerHook());
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.CaptureOnly);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => scenario.CaptureAsync(context, CancellationToken.None).AsTask());
+
+        Assert.Contains("armed", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static JournalHookValidationOwnerScenario CreateHookValidationScenario(FakeOwnerHook hook) =>
+        new(
+            new OwnerHookProofExecutor(
+                new OwnerHookTargetRegistry(
+                [
+                    new OwnerHookTargetDefinition(
+                        JournalHookTargetIds.JournalProvider,
+                        "journalProvider",
+                        "Open the Journal list.",
+                        new PassthroughHookContextCapture(),
+                        new NoOpHookMutationStrategy("Mutation proof is not configured.")),
+                ]),
+                new FakeOwnerHookInstaller(hook),
+                new StaticResolutionProvider(new SignatureResolution("journalProvider", 1, 0x1234, null))),
+            JournalHookTargetIds.JournalProvider);
+
+    private static string GetFinalStageName(JsonObject data)
+    {
+        var stages = data["ownerHook"]!["stages"]!.AsArray();
+        return stages[stages.Count - 1]!["stage"]!.GetValue<string>();
     }
 
     private sealed class PassthroughHookContextCapture : IHookContextCapture
@@ -46,11 +127,26 @@ public sealed class JournalOwnerHookScenarioTests
         public IOwnerHook Install(OwnerHookTargetDefinition target, SignatureResolution resolution) => hook;
     }
 
-    private sealed class FakeOwnerHook(int observedHitCount, IReadOnlyList<JsonObject> contexts) : IOwnerHook
+    private sealed class FakeOwnerHook : IOwnerHook
     {
-        public int ObservedHitCount { get; } = observedHitCount;
+        private readonly Queue<JsonObject> contexts = new();
 
-        public IReadOnlyList<JsonObject> DrainObservedContexts() => contexts;
+        public int ObservedHitCount { get; private set; }
+
+        public bool IsDisposed { get; private set; }
+
+        public void Observe(JsonObject context)
+        {
+            contexts.Enqueue(context);
+            ObservedHitCount++;
+        }
+
+        public IReadOnlyList<JsonObject> DrainObservedContexts()
+        {
+            var observed = contexts.ToArray();
+            contexts.Clear();
+            return observed;
+        }
 
         public void Enable()
         {
@@ -58,11 +154,28 @@ public sealed class JournalOwnerHookScenarioTests
 
         public void Dispose()
         {
+            IsDisposed = true;
         }
     }
 
     private sealed class StaticResolutionProvider(SignatureResolution resolution) : ISignatureResolutionProvider
     {
         public SignatureResolution GetResolution(string signatureId) => resolution;
+    }
+
+    private sealed class NullRouteMetadataProvider(ValidationRoute route) : IRouteMetadataProvider
+    {
+        public ValidationRoute Route => route;
+
+        public ValueTask<IReadOnlyDictionary<string, string?>> GetMetadataAsync(CancellationToken cancellationToken) =>
+            ValueTask.FromResult<IReadOnlyDictionary<string, string?>>(new Dictionary<string, string?>());
+    }
+
+    private sealed class NullEvidenceWriter : IEvidenceWriter
+    {
+        public string Kind => "null";
+
+        public ValueTask<EvidenceWriteResult> WriteAsync(ScenarioRunReport report, ScenarioExecutionContext context, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new EvidenceWriteResult("null", string.Empty));
     }
 }

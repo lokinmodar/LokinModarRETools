@@ -75,6 +75,22 @@ public sealed class OwnerHookProofExecutorTests
         Assert.True(hook.IsDisposed);
     }
 
+    [Fact]
+    public async Task CaptureAsync_WhenJournalContextIsRejected_MarksContextNotObserved()
+    {
+        var hook = new FakeOwnerHook(observedHitCount: 1, [new JsonObject { ["questId"] = 0 }]);
+        var executor = new OwnerHookProofExecutor(
+            CreateRegistry(new JournalProviderHookContextCapture()),
+            new FakeOwnerHookInstaller(hook),
+            new StaticResolutionProvider(new SignatureResolution("journalProvider", 1, 0x1234, null)));
+
+        using var session = await executor.CaptureAsync("journalProvider", CancellationToken.None);
+
+        var contextStage = Assert.Single(session.StageRecords, stage => stage.Stage is OwnerHookProofStage.ContextCaptured);
+        Assert.Equal(OwnerHookProofStatus.NotObserved, contextStage.Status);
+        Assert.Empty(contextStage.Data);
+    }
+
     private static OwnerHookTargetRegistry CreateRegistry(IHookContextCapture contextCapture) =>
         new(
         [

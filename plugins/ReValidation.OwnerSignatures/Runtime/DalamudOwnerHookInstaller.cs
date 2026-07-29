@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using Dalamud.Hooking;
 using Dalamud.Plugin.Services;
@@ -24,20 +23,11 @@ public sealed class DalamudOwnerHookInstaller(IGameInteropProvider gameInteropPr
         if (resolution.Rva is null)
             throw new InvalidOperationException("Journal provider signature resolution did not include an RVA.");
 
-        var callSite = checked((nint)(searchBase + resolution.Rva.Value));
-        var targetAddress = ResolveRelativeCallTarget(callSite);
+        var targetAddress = checked((nint)(searchBase + resolution.Rva.Value));
         return new JournalProviderOwnerHook(gameInteropProvider, targetAddress);
     }
 
-    private static nint ResolveRelativeCallTarget(nint callSite)
-    {
-        if (Marshal.ReadByte(callSite) != 0xE8)
-            throw new InvalidOperationException("Journal provider signature did not resolve to a relative call.");
-
-        return callSite + 5 + Marshal.ReadInt32(callSite, 1);
-    }
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [System.Runtime.InteropServices.UnmanagedFunctionPointer(System.Runtime.InteropServices.CallingConvention.Cdecl)]
     private delegate byte JournalProviderDelegate(ushort questId);
 
     private sealed class JournalProviderOwnerHook : IOwnerHook

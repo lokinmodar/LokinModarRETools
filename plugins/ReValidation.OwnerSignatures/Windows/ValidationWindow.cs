@@ -62,17 +62,18 @@ public sealed class ValidationWindow : Window
         if (armableScenario is not null)
         {
             ImGui.Separator();
-            ImGui.TextWrapped($"{armableScenario.ArmPrompt} Recommended for hover-driven tooltip validation.");
+            ImGui.TextWrapped(armableScenario.ArmPrompt);
             ImGui.BeginDisabled(controller.State.IsBusy);
             ImGui.SetNextItemWidth(120f);
             var configuredDuration = armDurationSeconds;
             if (ImGui.InputInt("Arm window (seconds)", ref configuredDuration))
                 armDurationSeconds = Math.Clamp(configuredDuration, MinArmDurationSeconds, MaxArmDurationSeconds);
 
-            if (ImGui.Button("Run selected scenario now"))
+            if (!armableScenario.RequiresArming && ImGui.Button("Run selected scenario now"))
                 _ = ObserveRunAsync();
 
-            ImGui.SameLine();
+            if (!armableScenario.RequiresArming)
+                ImGui.SameLine();
             if (ImGui.Button("Arm selected scenario"))
                 _ = ObserveArmAsync();
             ImGui.EndDisabled();

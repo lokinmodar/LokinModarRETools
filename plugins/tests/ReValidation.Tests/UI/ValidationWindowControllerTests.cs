@@ -211,6 +211,7 @@ public sealed class ValidationWindowControllerTests
         Assert.Equal("Tooltip cue did not become ready within the arm window.", controller.State.StatusDetailText);
         Assert.Empty(controller.State.ArtifactPaths);
         Assert.Equal(0, runner.RunCount);
+        Assert.Equal(1, scenario.DisarmCount);
     }
 
     [Fact]
@@ -238,6 +239,44 @@ public sealed class ValidationWindowControllerTests
         Assert.Empty(controller.State.StatusDetailText);
         Assert.Equal(0, runner.RunCount);
         Assert.Equal(0, scenario.PollCount);
+        Assert.Equal(1, scenario.DisarmCount);
+    }
+
+    [Fact]
+    public async Task PulseArmedScenario_Cancellation_DisarmsPendingScenario()
+    {
+        var scenario = new ArmableStubScenario("tooltip.item-detail", new ScenarioArmState(false, "Waiting for tooltip cue."));
+        var controller = new ValidationWindowController(
+            state: new ValidationWindowState(),
+            registry: ValidationScenarioRegistry.ForTests(scenario),
+            runner: new StubRunner(),
+            timeProvider: new FakeTimeProvider());
+        controller.State.SelectScenario("tooltip.item-detail");
+        using var cancellation = new CancellationTokenSource();
+
+        await controller.ArmSelectedScenarioAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+        cancellation.Cancel();
+        await controller.PulseArmedScenarioAsync(cancellation.Token);
+
+        Assert.Equal("Cancelled", controller.State.StatusText);
+        Assert.Equal(1, scenario.DisarmCount);
+    }
+
+    [Fact]
+    public async Task Dispose_DisarmsPendingScenario()
+    {
+        var scenario = new ArmableStubScenario("tooltip.item-detail", new ScenarioArmState(false, "Waiting for tooltip cue."));
+        var controller = new ValidationWindowController(
+            state: new ValidationWindowState(),
+            registry: ValidationScenarioRegistry.ForTests(scenario),
+            runner: new StubRunner(),
+            timeProvider: new FakeTimeProvider());
+        controller.State.SelectScenario("tooltip.item-detail");
+
+        await controller.ArmSelectedScenarioAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+        controller.Dispose();
+
+        Assert.Equal(1, scenario.DisarmCount);
     }
 
     [Fact]
@@ -419,9 +458,24 @@ public sealed class ValidationWindowControllerTests
         public ValidationScenarioDefinition Definition { get; } = new(id, id);
         public string ArmPrompt => "Hover the tooltip in game.";
         public int PollCount { get; private set; }
+        public int ArmCount { get; private set; }
+        public int DisarmCount { get; private set; }
+
+        public ValueTask ArmAsync(CancellationToken cancellationToken)
+        {
+            ArmCount++;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask DisarmAsync(CancellationToken cancellationToken)
+        {
+            DisarmCount++;
+            return ValueTask.CompletedTask;
+        }
 
         public ValueTask<ScenarioArmState> PollArmCueAsync(CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             PollCount++;
             if (cueStates.Count == 0)
                 return ValueTask.FromResult(new ScenarioArmState(false, "Waiting for tooltip cue."));
