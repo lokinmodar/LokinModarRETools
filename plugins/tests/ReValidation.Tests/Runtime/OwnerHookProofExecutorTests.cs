@@ -35,29 +35,99 @@ public sealed class OwnerHookProofExecutorTests
             stage => Assert.Equal(OwnerHookProofStage.ContextCaptured, stage.Stage));
     }
 
+    [Fact]
+    public async Task CaptureAsync_WhenCancellationIsAlreadyRequested_DoesNotInstallHook()
+    {
+        var hook = new FakeOwnerHook(observedHitCount: 0, []);
+        var installer = new FakeOwnerHookInstaller(hook);
+        var executor = new OwnerHookProofExecutor(CreateRegistry(new PassthroughHookContextCapture()), installer, new StaticResolutionProvider(new SignatureResolution("journalProvider", 1, 0x1234, null)));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => executor.CaptureAsync("journalProvider", cancellation.Token).AsTask());
+
+        Assert.Equal(0, installer.InstallCount);
+        Assert.False(hook.IsDisposed);
+    }
+
+    [Fact]
+    public async Task CaptureAsync_WhenCancellationIsRequestedAfterInstall_DisposesHook()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var hook = new FakeOwnerHook(observedHitCount: 0, [], cancellation.Cancel);
+        var installer = new FakeOwnerHookInstaller(hook);
+        var executor = new OwnerHookProofExecutor(CreateRegistry(new PassthroughHookContextCapture()), installer, new StaticResolutionProvider(new SignatureResolution("journalProvider", 1, 0x1234, null)));
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => executor.CaptureAsync("journalProvider", cancellation.Token).AsTask());
+
+        Assert.True(hook.IsDisposed);
+    }
+
+    [Fact]
+    public async Task CaptureAsync_WhenContextCaptureThrows_DisposesHook()
+    {
+        var hook = new FakeOwnerHook(observedHitCount: 1, [new JsonObject()]);
+        var installer = new FakeOwnerHookInstaller(hook);
+        var executor = new OwnerHookProofExecutor(CreateRegistry(new ThrowingHookContextCapture()), installer, new StaticResolutionProvider(new SignatureResolution("journalProvider", 1, 0x1234, null)));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => executor.CaptureAsync("journalProvider", CancellationToken.None).AsTask());
+
+        Assert.True(hook.IsDisposed);
+    }
+
+    private static OwnerHookTargetRegistry CreateRegistry(IHookContextCapture contextCapture) =>
+        new(
+        [
+            new OwnerHookTargetDefinition(
+                "journalProvider",
+                "journalProvider",
+                "Open the Journal list.",
+                contextCapture,
+                new NoOpHookMutationStrategy("Mutation proof is not configured.")),
+        ]);
+
     private sealed class PassthroughHookContextCapture : IHookContextCapture
     {
         public JsonObject Capture(JsonObject rawContext) => rawContext;
     }
 
-    private sealed class FakeOwnerHookInstaller(IOwnerHook hook) : IOwnerHookInstaller
+    private sealed class ThrowingHookContextCapture : IHookContextCapture
     {
-        public IOwnerHook Install(OwnerHookTargetDefinition target, SignatureResolution resolution) => hook;
+        public JsonObject Capture(JsonObject rawContext) => throw new InvalidOperationException("capture failed");
     }
 
-    private sealed class FakeOwnerHook(int observedHitCount, IReadOnlyList<JsonObject> contexts) : IOwnerHook
+    private sealed class FakeOwnerHookInstaller(IOwnerHook hook) : IOwnerHookInstaller
     {
-        public int ObservedHitCount { get; } = observedHitCount;
+        public int InstallCount { get; private set; }
+
+        public IOwnerHook Install(OwnerHookTargetDefinition target, SignatureResolution resolution)
+        {
+            InstallCount++;
+            return hook;
+        }
+    }
+
+    private sealed class FakeOwnerHook : IOwnerHook
+    {
+        private readonly IReadOnlyList<JsonObject> contexts;
+        private readonly Action? onEnable;
+
+        public FakeOwnerHook(int observedHitCount, IReadOnlyList<JsonObject> contexts, Action? onEnable = null)
+        {
+            ObservedHitCount = observedHitCount;
+            this.contexts = contexts;
+            this.onEnable = onEnable;
+        }
+
+        public int ObservedHitCount { get; }
+
+        public bool IsDisposed { get; private set; }
 
         public IReadOnlyList<JsonObject> DrainObservedContexts() => contexts;
 
-        public void Enable()
-        {
-        }
+        public void Enable() => onEnable?.Invoke();
 
-        public void Dispose()
-        {
-        }
+        public void Dispose() => IsDisposed = true;
     }
 
     private sealed class StaticResolutionProvider(SignatureResolution resolution) : ISignatureResolutionProvider
