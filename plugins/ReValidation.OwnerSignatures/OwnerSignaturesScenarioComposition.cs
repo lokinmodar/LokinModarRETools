@@ -1,6 +1,8 @@
+using ReValidation.Common.Abstractions;
 using ReValidation.Common.Execution;
 using ReValidation.Common.Models;
 using ReValidation.Common.Scenarios;
+using ReValidation.OwnerSignatures.Runtime;
 using ReValidation.OwnerSignatures.Scenarios;
 using ReValidation.OwnerSignatures.Services;
 
@@ -31,8 +33,8 @@ public static class OwnerSignaturesScenarioComposition
     {
         ArgumentNullException.ThrowIfNull(dependencies);
 
-        return new ValidationScenarioRegistry(
-        [
+        var scenarios = new List<IValidationScenario>
+        {
             new JournalCompletedEntriesOwnerScenario(
                 dependencies.JournalProbe,
                 [JournalRequirement],
@@ -50,7 +52,19 @@ public static class OwnerSignaturesScenarioComposition
                 [ActionTooltipRequirement],
                 FindResolutions(dependencies.Resolutions, ActionTooltipRequirement.Id),
                 comparisonSource: dependencies.ActionTooltipComparisonSource),
-        ]);
+        };
+
+        if (dependencies.HookProofExecutor is not null && dependencies.HookTargets is not null)
+        {
+            scenarios.Add(new JournalHookValidationOwnerScenario(
+                dependencies.HookProofExecutor,
+                JournalHookTargetIds.JournalProvider));
+            scenarios.Add(new JournalMutationProofOwnerScenario(
+                dependencies.HookProofExecutor,
+                JournalHookTargetIds.JournalProvider));
+        }
+
+        return new ValidationScenarioRegistry(scenarios);
     }
 
     private sealed class UnavailableJournalProbe : IJournalCompletedEntriesProbe

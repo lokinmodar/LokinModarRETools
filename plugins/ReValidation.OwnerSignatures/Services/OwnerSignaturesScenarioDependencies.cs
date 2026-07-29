@@ -1,3 +1,5 @@
+using ReValidation.OwnerSignatures.Runtime.HookTargets;
+using ReValidation.OwnerSignatures.Runtime.Proof;
 using ReValidation.Common.Scenarios;
 
 namespace ReValidation.OwnerSignatures.Services;
@@ -11,4 +13,6 @@ public sealed record OwnerSignaturesScenarioDependencies(
     ITooltipComparisonSource? ItemTooltipComparisonSource = null,
     ITooltipComparisonSource? ActionTooltipComparisonSource = null,
     bool SupportsJournalMutationProof = true,
-    string? JournalMutationBlockingReason = null);
+    string? JournalMutationBlockingReason = null,
+    OwnerHookProofExecutor? HookProofExecutor = null,
+    OwnerHookTargetRegistry? HookTargets = null);

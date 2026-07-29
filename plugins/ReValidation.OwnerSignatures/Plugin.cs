@@ -12,6 +12,8 @@ using ReValidation.Common.Proof;
 using ReValidation.Common.UI;
 using ReValidation.OwnerSignatures.Commands;
 using ReValidation.OwnerSignatures.Runtime;
+using ReValidation.OwnerSignatures.Runtime.HookTargets;
+using ReValidation.OwnerSignatures.Runtime.Proof;
 using ReValidation.OwnerSignatures.Services;
 using ReValidation.OwnerSignatures.Windows;
 using Lumina.Excel.Sheets;
@@ -71,6 +73,19 @@ public sealed class Plugin : IDalamudPlugin
         var itemTooltipProbe = new ItemDetailTooltipProbe(GetItemDetailAddonAddress, GetItemDetailAgentAddress);
         var actionTooltipProbe = new ActionDetailTooltipProbe(GetActionDetailAddonAddress, GetActionDetailAgentAddress);
         var resolutionProvider = new ResolvedSignatureProvider(resolutions);
+        var hookTargets = new OwnerHookTargetRegistry(
+        [
+            new OwnerHookTargetDefinition(
+                JournalHookTargetIds.JournalProvider,
+                "journalProvider",
+                "Open the Journal list.",
+                new JournalProviderHookContextCapture(),
+                new JournalProviderMutationStrategy()),
+        ]);
+        var hookProofExecutor = new OwnerHookProofExecutor(
+            hookTargets,
+            new DalamudOwnerHookInstaller(PluginServices.GameInteropProvider, (ulong)PluginServices.SigScanner.SearchBase),
+            resolutionProvider);
         var hookFactory = new DalamudTooltipProofHookFactory(PluginServices.GameInteropProvider, resolutionProvider, (ulong)PluginServices.SigScanner.SearchBase);
         branchRouteAdapter = new OwnerBranchValidationRouteAdapter(
             resolutionProvider,
@@ -83,7 +98,9 @@ public sealed class Plugin : IDalamudPlugin
                 actionTooltipProbe,
                 resolutions,
                 SupportsJournalMutationProof: false,
-                JournalMutationBlockingReason: "Journal override proof is not configured."));
+                JournalMutationBlockingReason: "Journal override proof is not configured.",
+                HookProofExecutor: hookProofExecutor,
+                HookTargets: hookTargets));
         var runner = new ValidationScenarioRunner(
             new OwnerSignatureMetadataProvider(resolutions),
             diagnosticsSink,
