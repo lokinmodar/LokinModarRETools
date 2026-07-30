@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using ReValidation.Common.Models;
 using ReValidation.OwnerSignatures.Runtime.HookTargets;
 using ReValidation.OwnerSignatures.Services;
 
@@ -9,6 +10,15 @@ public sealed class OwnerHookProofExecutor(
     IOwnerHookInstaller installer,
     ISignatureResolutionProvider resolutions)
 {
+    public ScenarioPreconditionResult ValidateTarget(string targetId)
+    {
+        var target = registry.Get(targetId);
+        var resolution = resolutions.GetResolution(target.SignatureId);
+        return resolution.MatchCount == 1 && resolution.Rva is not null
+            ? new ScenarioPreconditionResult(true, null)
+            : new ScenarioPreconditionResult(false, $"Signature '{target.SignatureId}' was not uniquely resolved.");
+    }
+
     public ValueTask<OwnerHookSession> CaptureAsync(string targetId, CancellationToken cancellationToken)
     {
         var session = ArmAsync(targetId, cancellationToken);
@@ -28,8 +38,9 @@ public sealed class OwnerHookProofExecutor(
         cancellationToken.ThrowIfCancellationRequested();
         var target = registry.Get(targetId);
         var resolution = resolutions.GetResolution(target.SignatureId);
-        if (resolution.MatchCount != 1 || resolution.Rva is null)
-            throw new InvalidOperationException($"Signature '{target.SignatureId}' was not uniquely resolved.");
+        var precondition = ValidateTarget(targetId);
+        if (!precondition.CanRun)
+            throw new InvalidOperationException(precondition.BlockingReason);
 
         var hook = installer.Install(target, resolution);
         try

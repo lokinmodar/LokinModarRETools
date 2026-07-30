@@ -27,7 +27,8 @@ public sealed class JournalOwnerHookScenarioTests
                         "journalProvider",
                         "Open the Journal list.",
                         new PassthroughHookContextCapture(),
-                        new NoOpHookMutationStrategy("Mutation proof is not configured.")),
+                        new NoOpHookMutationStrategy("Mutation proof is not configured."),
+                        TestOwnerHookBinding.Instance),
                 ]),
                 new FakeOwnerHookInstaller(hook),
                 new StaticResolutionProvider(new SignatureResolution("journalProvider", 1, 0x1234, null))),
@@ -66,7 +67,8 @@ public sealed class JournalOwnerHookScenarioTests
                         "journalProvider",
                         "Open the Journal list.",
                         new PassthroughHookContextCapture(),
-                        new NoOpHookMutationStrategy("Mutation proof is not configured.")),
+                        new NoOpHookMutationStrategy("Mutation proof is not configured."),
+                        TestOwnerHookBinding.Instance),
                 ]),
                 new FakeOwnerHookInstaller(hook),
                 new StaticResolutionProvider(new SignatureResolution("journalProvider", 1, 0x1234, null))),
@@ -95,7 +97,80 @@ public sealed class JournalOwnerHookScenarioTests
         Assert.Contains("armed", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task JournalHookValidation_NonUniqueSignature_IsBlockedBeforeArming()
+    {
+        var scenario = CreateHookValidationScenario(
+            new FakeOwnerHook(),
+            new StaticResolutionProvider(new SignatureResolution("journalProvider", 2, null, "multiple matches")));
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.CaptureOnly);
+
+        var precondition = await scenario.ValidateAsync(context, CancellationToken.None);
+
+        Assert.False(precondition.CanRun);
+        Assert.Equal("Signature 'journalProvider' was not uniquely resolved.", precondition.BlockingReason);
+    }
+
+    [Fact]
+    public async Task JournalHookValidation_CaptureOnly_DoesNotPassWhenContextWasNotObserved()
+    {
+        var hook = new FakeOwnerHook();
+        var scenario = CreateHookValidationScenario(
+            hook,
+            new StaticResolutionProvider(new SignatureResolution("journalProvider", 1, 0x1234, null)),
+            new JournalProviderHookContextCapture());
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.CaptureOnly);
+
+        await scenario.ArmAsync(CancellationToken.None);
+        hook.Observe(new JsonObject { ["questId"] = 0 });
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
+            .RunAsync(scenario, context, CancellationToken.None);
+
+        Assert.False(report.IsSuccess);
+        Assert.Equal("capture", report.FailedPhase);
+        Assert.Contains("context", report.Summary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JournalMutationProof_FullProof_DisposesHookWhenContextWasNotObserved()
+    {
+        var hook = new FakeOwnerHook();
+        var scenario = new JournalMutationProofOwnerScenario(
+            new OwnerHookProofExecutor(
+                new OwnerHookTargetRegistry(
+                [
+                    new OwnerHookTargetDefinition(
+                        JournalHookTargetIds.JournalProvider,
+                        "journalProvider",
+                        "Open the Journal list.",
+                        new JournalProviderHookContextCapture(),
+                        new NoOpHookMutationStrategy("Mutation proof is not configured."),
+                        TestOwnerHookBinding.Instance),
+                ]),
+                new FakeOwnerHookInstaller(hook),
+                new StaticResolutionProvider(new SignatureResolution("journalProvider", 1, 0x1234, null))),
+            JournalHookTargetIds.JournalProvider);
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.FullProof);
+
+        await scenario.ArmAsync(CancellationToken.None);
+        hook.Observe(new JsonObject { ["questId"] = 0 });
+        var report = await new ValidationScenarioRunner(new NullRouteMetadataProvider(context.Route), new NullEvidenceWriter())
+            .RunAsync(scenario, context, CancellationToken.None);
+
+        Assert.Equal("capture", report.FailedPhase);
+        Assert.True(hook.IsDisposed);
+    }
+
     private static JournalHookValidationOwnerScenario CreateHookValidationScenario(FakeOwnerHook hook) =>
+        CreateHookValidationScenario(
+            hook,
+            new StaticResolutionProvider(new SignatureResolution("journalProvider", 1, 0x1234, null)),
+            new PassthroughHookContextCapture());
+
+    private static JournalHookValidationOwnerScenario CreateHookValidationScenario(
+        FakeOwnerHook hook,
+        ISignatureResolutionProvider resolutionProvider,
+        IHookContextCapture? contextCapture = null) =>
         new(
             new OwnerHookProofExecutor(
                 new OwnerHookTargetRegistry(
@@ -104,11 +179,12 @@ public sealed class JournalOwnerHookScenarioTests
                         JournalHookTargetIds.JournalProvider,
                         "journalProvider",
                         "Open the Journal list.",
-                        new PassthroughHookContextCapture(),
-                        new NoOpHookMutationStrategy("Mutation proof is not configured.")),
+                        contextCapture ?? new PassthroughHookContextCapture(),
+                        new NoOpHookMutationStrategy("Mutation proof is not configured."),
+                        TestOwnerHookBinding.Instance),
                 ]),
                 new FakeOwnerHookInstaller(hook),
-                new StaticResolutionProvider(new SignatureResolution("journalProvider", 1, 0x1234, null))),
+                resolutionProvider),
             JournalHookTargetIds.JournalProvider);
 
     private static string GetFinalStageName(JsonObject data)

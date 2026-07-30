@@ -21,8 +21,11 @@ public sealed class JournalHookValidationOwnerScenario(
 
     public bool RequiresArming => true;
 
-    public ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(new ScenarioPreconditionResult(true, null));
+    public ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(executor.ValidateTarget(targetId));
+    }
 
     public async ValueTask<ScenarioCapture> CaptureAsync(ScenarioExecutionContext context, CancellationToken cancellationToken)
     {
@@ -32,10 +35,18 @@ public sealed class JournalHookValidationOwnerScenario(
             await executor.CaptureArmedAsync(activeSession, cancellationToken);
             RecordDisarm(activeSession);
             session = null;
-            return new ScenarioCapture("Journal hook stages captured", new JsonObject
-            {
-                ["ownerHook"] = activeSession.BuildEvidence().ToJson(),
-            });
+            var requiredProofObserved = HasPassedStage(activeSession, OwnerHookProofStage.SignatureResolved)
+                && HasPassedStage(activeSession, OwnerHookProofStage.HookInstalled)
+                && HasPassedStage(activeSession, OwnerHookProofStage.HitObserved)
+                && HasPassedStage(activeSession, OwnerHookProofStage.ContextCaptured);
+            return new ScenarioCapture(
+                "Journal hook stages captured",
+                new JsonObject
+                {
+                    ["ownerHook"] = activeSession.BuildEvidence().ToJson(),
+                },
+                requiredProofObserved,
+                requiredProofObserved ? null : "Journal hook context was not observed.");
         }
         finally
         {
@@ -96,4 +107,7 @@ public sealed class JournalHookValidationOwnerScenario(
             new JsonObject()));
         activeSession.Dispose();
     }
+
+    private static bool HasPassedStage(OwnerHookSession session, OwnerHookProofStage stage) =>
+        session.StageRecords.Any(record => record.Stage == stage && record.Status is OwnerHookProofStatus.Passed);
 }

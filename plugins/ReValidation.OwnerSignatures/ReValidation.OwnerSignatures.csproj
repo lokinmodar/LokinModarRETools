@@ -32,4 +32,8 @@
     </AssemblyAttribute>
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="ReValidation.Tests" />
+  </ItemGroup>
+
 </Project>

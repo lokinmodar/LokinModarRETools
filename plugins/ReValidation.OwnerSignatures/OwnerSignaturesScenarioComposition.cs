@@ -11,7 +11,11 @@ namespace ReValidation.OwnerSignatures;
 public static class OwnerSignaturesScenarioComposition
 {
     private const string BlockingReason = "Owner-signature runtime probes and signature inputs are not configured.";
-    private static readonly SignatureRequirement JournalRequirement = new("journalProvider", "E8 ?? ?? ?? ?? 41 88 84 2E", mustBeUnique: true);
+    private static readonly SignatureRequirement JournalRequirement = new(
+        "journalProvider",
+        "E8 ?? ?? ?? ?? 41 88 84 2E",
+        mustBeUnique: true,
+        SignatureAddressResolution.FollowLeadingCallOrJump);
     private static readonly SignatureRequirement ItemTooltipRequirement = new("itemTooltip", "48 89 5C 24 ?? 55 56 57 41 54 41 55 41 56 41 57 48 83 EC ?? 48 8B 42 ?? 4C 8B EA", mustBeUnique: true);
     private static readonly SignatureRequirement ActionTooltipRequirement = new("actionTooltip", "48 89 5C 24 ?? 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 40 48 8B 42 28 4C 8B FA 48 8B F1 49 8B E8", mustBeUnique: true);
 

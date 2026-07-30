@@ -64,7 +64,11 @@ public sealed class Plugin : IDalamudPlugin
         var journalProbe = new CompletedJournalCapture(quests, "owner");
         var requirements = new[]
         {
-            new SignatureRequirement("journalProvider", "E8 ?? ?? ?? ?? 41 88 84 2E", mustBeUnique: true),
+            new SignatureRequirement(
+                "journalProvider",
+                "E8 ?? ?? ?? ?? 41 88 84 2E",
+                mustBeUnique: true,
+                SignatureAddressResolution.FollowLeadingCallOrJump),
             new SignatureRequirement("itemTooltip", "48 89 5C 24 ?? 55 56 57 41 54 41 55 41 56 41 57 48 83 EC ?? 48 8B 42 ?? 4C 8B EA", mustBeUnique: true),
             new SignatureRequirement("actionTooltip", "48 89 5C 24 ?? 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 40 48 8B 42 28 4C 8B FA 48 8B F1 49 8B E8", mustBeUnique: true),
         };
@@ -80,23 +84,26 @@ public sealed class Plugin : IDalamudPlugin
                 "journalProvider",
                 "Open the Journal list.",
                 new JournalProviderHookContextCapture(),
-                new JournalProviderMutationStrategy()),
+                new JournalProviderMutationStrategy(),
+                new JournalProviderOwnerHookBinding(PluginServices.GameInteropProvider)),
             new OwnerHookTargetDefinition(
                 "itemTooltip",
                 "itemTooltip",
                 "Open an item tooltip.",
                 new TooltipHookContextCapture("item"),
-                new TooltipOwnerMutationStrategy(itemTooltipProbe)),
+                new TooltipOwnerMutationStrategy(itemTooltipProbe),
+                new TooltipOwnerHookBinding(PluginServices.GameInteropProvider, "item")),
             new OwnerHookTargetDefinition(
                 "actionTooltip",
                 "actionTooltip",
                 "Open an action tooltip.",
                 new TooltipHookContextCapture("action"),
-                new TooltipOwnerMutationStrategy(actionTooltipProbe)),
+                new TooltipOwnerMutationStrategy(actionTooltipProbe),
+                new TooltipOwnerHookBinding(PluginServices.GameInteropProvider, "action")),
         ]);
         var hookProofExecutor = new OwnerHookProofExecutor(
             hookTargets,
-            new DalamudOwnerHookInstaller(PluginServices.GameInteropProvider, (ulong)PluginServices.SigScanner.SearchBase),
+            new DalamudOwnerHookInstaller(unchecked((ulong)PluginServices.SigScanner.Module.BaseAddress.ToInt64())),
             resolutionProvider);
         branchRouteAdapter = new OwnerBranchValidationRouteAdapter(
             resolutionProvider,

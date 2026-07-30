@@ -190,8 +190,8 @@ public sealed class RouteScenarioCompositionTests
         new(
             new OwnerHookTargetRegistry(
             [
-                new OwnerHookTargetDefinition("itemTooltip", "itemTooltip", "Open an item tooltip.", new TooltipHookContextCapture("item"), new NoOpHookMutationStrategy("not used")),
-                new OwnerHookTargetDefinition("actionTooltip", "actionTooltip", "Open an action tooltip.", new TooltipHookContextCapture("action"), new NoOpHookMutationStrategy("not used")),
+                new OwnerHookTargetDefinition("itemTooltip", "itemTooltip", "Open an item tooltip.", new TooltipHookContextCapture("item"), new NoOpHookMutationStrategy("not used"), TestOwnerHookBinding.Instance),
+                new OwnerHookTargetDefinition("actionTooltip", "actionTooltip", "Open an action tooltip.", new TooltipHookContextCapture("action"), new NoOpHookMutationStrategy("not used"), TestOwnerHookBinding.Instance),
             ]),
             new FakeOwnerHookInstaller(),
             new FakeResolutionProvider());

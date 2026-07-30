@@ -283,7 +283,8 @@ public sealed class JournalCompletedEntriesScenarioTests
                     "journalProvider",
                     "Open the Journal list.",
                     new JournalProviderHookContextCapture(),
-                    new NoOpHookMutationStrategy("Not used by composition.")),
+                    new NoOpHookMutationStrategy("Not used by composition."),
+                    TestOwnerHookBinding.Instance),
             ]);
             var resolutions = new[] { new SignatureResolution("journalProvider", 1, 0x1234, null) };
 

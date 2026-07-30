@@ -10,8 +10,7 @@ public sealed unsafe class ActionDetailTooltipProbe : ITooltipProbe
 {
     private readonly Func<nint> addonAddressAccessor;
     private readonly Func<nint> agentAddressAccessor;
-    private AtkTextNode* overriddenNode;
-    private string? originalVisibleText;
+    private readonly ActionDetailTooltipOverrideState overrideState = new();
 
     public ActionDetailTooltipProbe(Func<nint> addonAddressAccessor, Func<nint> agentAddressAccessor)
     {
@@ -32,18 +31,23 @@ public sealed unsafe class ActionDetailTooltipProbe : ITooltipProbe
     public ValueTask<ScenarioOverrideTicket?> ApplySentinelOverrideAsync(string sentinel, CancellationToken cancellationToken)
     {
         var addon = GetAddon();
-        overriddenNode = FindFirstVisibleTextNode(addon);
-        if (overriddenNode is null)
+        var node = FindFirstVisibleTextNode(addon);
+        if (node is null)
             throw new InvalidOperationException("ActionDetail text node is unavailable.");
 
-        originalVisibleText = overriddenNode->NodeText.ToString();
-        overriddenNode->SetText(sentinel);
+        var originalVisibleText = node->NodeText.ToString();
+        node->SetText(sentinel);
+        overrideState.Commit((nint)addon, (nint)node, originalVisibleText);
         return ValueTask.FromResult<ScenarioOverrideTicket?>(new ScenarioOverrideTicket($"Applied {sentinel}", new System.Text.Json.Nodes.JsonObject()));
     }
 
     public ValueTask<ScenarioAssertResult?> AssertSentinelAsync(string sentinel, CancellationToken cancellationToken)
     {
-        var current = overriddenNode is null ? string.Empty : overriddenNode->NodeText.ToString();
+        var addon = GetAddon();
+        var node = FindFirstVisibleTextNode(addon);
+        var current = node is not null && overrideState.Matches((nint)addon, (nint)node)
+            ? node->NodeText.ToString()
+            : string.Empty;
         return ValueTask.FromResult<ScenarioAssertResult?>(new ScenarioAssertResult(
             string.Equals(current, sentinel, StringComparison.Ordinal),
             "Tooltip sentinel asserted",
@@ -52,10 +56,30 @@ public sealed unsafe class ActionDetailTooltipProbe : ITooltipProbe
 
     public ValueTask<ScenarioRestoreResult> RestoreAsync(CancellationToken cancellationToken)
     {
-        if (overriddenNode is not null && originalVisibleText is not null)
-            overriddenNode->SetText(originalVisibleText);
+        if (!overrideState.IsActive)
+            return ValueTask.FromResult(new ScenarioRestoreResult(true, "No tooltip text override was active", []));
 
-        return ValueTask.FromResult(new ScenarioRestoreResult(true, "Tooltip text restored", []));
+        try
+        {
+            var addon = GetAddon();
+            var node = FindFirstVisibleTextNode(addon);
+            if (node is null)
+            {
+                overrideState.Clear();
+                return ValueTask.FromResult(new ScenarioRestoreResult(false, "Tooltip was rebuilt before restore; stale state was not written.", []));
+            }
+
+            if (!overrideState.TryTakeRestoreText((nint)addon, (nint)node, out var originalVisibleText))
+                return ValueTask.FromResult(new ScenarioRestoreResult(false, "Tooltip was rebuilt before restore; stale state was not written.", []));
+
+            node->SetText(originalVisibleText!);
+            return ValueTask.FromResult(new ScenarioRestoreResult(true, "Tooltip text restored", []));
+        }
+        catch
+        {
+            overrideState.Clear();
+            throw;
+        }
     }
 
     private static unsafe IReadOnlyList<string> CollectPayloadLines(AtkUnitBase* addon)
@@ -109,5 +133,39 @@ public sealed unsafe class ActionDetailTooltipProbe : ITooltipProbe
         return address == nint.Zero
             ? throw new InvalidOperationException("ActionDetail agent is unavailable.")
             : (AgentActionDetail*)address;
+    }
+}
+
+internal sealed class ActionDetailTooltipOverrideState
+{
+    private nint addonAddress;
+    private nint nodeAddress;
+    private string? originalText;
+
+    public bool IsActive => originalText is not null;
+
+    public void Commit(nint addonAddress, nint nodeAddress, string originalText)
+    {
+        this.addonAddress = addonAddress;
+        this.nodeAddress = nodeAddress;
+        this.originalText = originalText;
+    }
+
+    public bool Matches(nint addonAddress, nint nodeAddress) =>
+        IsActive && this.addonAddress == addonAddress && this.nodeAddress == nodeAddress;
+
+    public bool TryTakeRestoreText(nint addonAddress, nint nodeAddress, out string? originalText)
+    {
+        var matches = Matches(addonAddress, nodeAddress);
+        originalText = matches ? this.originalText : null;
+        Clear();
+        return matches;
+    }
+
+    public void Clear()
+    {
+        addonAddress = nint.Zero;
+        nodeAddress = nint.Zero;
+        originalText = null;
     }
 }

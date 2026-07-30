@@ -12,9 +12,12 @@ public sealed class SignatureScannerResolver(ISignatureScanner scanner)
         if (matches.Count == 0)
             return new SignatureResolution(requirement.Id, 0, null, "zero matches");
 
-        var first = (ulong)matches[0];
-        var rva = first >= scanner.SearchBase
-            ? first - scanner.SearchBase
+        var resolvedAddress = requirement.AddressResolution is SignatureAddressResolution.FollowLeadingCallOrJump
+            ? scanner.ResolveTextAddress(requirement.Id, requirement.Pattern)
+            : matches[0];
+        var first = unchecked((ulong)resolvedAddress.ToInt64());
+        var rva = first >= scanner.ModuleBase
+            ? first - scanner.ModuleBase
             : first;
 
         return new SignatureResolution(requirement.Id, matches.Count, rva, null);

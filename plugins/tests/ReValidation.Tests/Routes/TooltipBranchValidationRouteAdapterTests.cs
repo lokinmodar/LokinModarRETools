@@ -72,7 +72,7 @@ public sealed class TooltipBranchValidationRouteAdapterTests
     }
 
     [Fact]
-    public async Task OwnerRoute_UsesGenericHookPipelineForTooltipProof()
+    public async Task OwnerRoute_BlocksTooltipProofUntilInteractiveArmCueWindowExists()
     {
         var probe = new FakeTooltipProbe();
         var hook = new FakeOwnerHook(observedHitCount: 1);
@@ -83,11 +83,11 @@ public sealed class TooltipBranchValidationRouteAdapterTests
 
         var report = await adapter.RunProofGroupAsync(ProofGroupFactory.CreateItemTooltipGroup(), requiredProofLevel: 4, CancellationToken.None);
 
-        Assert.All(report.Targets, target => Assert.Equal("passed", target.Verdict));
-        Assert.Equal(1, probe.ApplyCount);
-        Assert.Equal(1, probe.AssertCount);
-        Assert.Equal(1, probe.RestoreCount);
-        Assert.True(hook.IsDisposed);
+        var target = Assert.Single(report.Targets);
+        Assert.Equal("blocked", target.Verdict);
+        Assert.Equal("Owner tooltip branch validation requires an interactive arm/cue window; run the individual armed tooltip scenario.", target.BlockingReason);
+        Assert.Equal(0, probe.ApplyCount);
+        Assert.False(hook.IsDisposed);
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public sealed class TooltipBranchValidationRouteAdapterTests
         var report = await adapter.RunProofGroupAsync(ProofGroupFactory.CreateItemTooltipGroup(), requiredProofLevel: 4, CancellationToken.None);
 
         var target = Assert.Single(report.Targets);
-        Assert.Equal("not-observed", target.Verdict);
+        Assert.Equal("blocked", target.Verdict);
         Assert.False(target.EffectApplied);
         Assert.False(target.EffectRestored);
         Assert.Equal(0, probe.ApplyCount);
@@ -151,8 +151,8 @@ public sealed class TooltipBranchValidationRouteAdapterTests
     private static OwnerHookTargetRegistry CreateOwnerHookTargets(ITooltipProbe probe) =>
         new(
         [
-            new OwnerHookTargetDefinition("itemTooltip", "itemTooltip", "Open an item tooltip.", new TooltipHookContextCapture("item"), new TooltipOwnerMutationStrategy(probe)),
-            new OwnerHookTargetDefinition("actionTooltip", "actionTooltip", "Open an action tooltip.", new TooltipHookContextCapture("action"), new TooltipOwnerMutationStrategy(probe)),
+            new OwnerHookTargetDefinition("itemTooltip", "itemTooltip", "Open an item tooltip.", new TooltipHookContextCapture("item"), new TooltipOwnerMutationStrategy(probe), TestOwnerHookBinding.Instance),
+            new OwnerHookTargetDefinition("actionTooltip", "actionTooltip", "Open an action tooltip.", new TooltipHookContextCapture("action"), new TooltipOwnerMutationStrategy(probe), TestOwnerHookBinding.Instance),
         ]);
 
     private static OwnerHookProofExecutor CreateOwnerHookProofExecutor(int observedHitCount, ITooltipProbe probe) =>

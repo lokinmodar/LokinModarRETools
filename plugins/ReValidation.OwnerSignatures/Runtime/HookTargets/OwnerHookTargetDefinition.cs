@@ -7,4 +7,10 @@ public sealed record OwnerHookTargetDefinition(
     string SignatureId,
     string CueDescription,
     IHookContextCapture ContextCapture,
-    IHookMutationStrategy MutationStrategy);
+    IHookMutationStrategy MutationStrategy,
+    IOwnerHookBinding Binding);
+
+public interface IOwnerHookBinding
+{
+    IOwnerHook Install(nint targetAddress);
+}

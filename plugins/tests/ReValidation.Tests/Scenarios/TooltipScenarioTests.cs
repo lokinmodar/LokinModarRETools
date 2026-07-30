@@ -161,7 +161,8 @@ public sealed class TooltipScenarioTests
                     targetId,
                     "Open a tooltip.",
                     new TooltipHookContextCapture(detailKind),
-                    new TooltipOwnerMutationStrategy(probe)),
+                    new TooltipOwnerMutationStrategy(probe),
+                    TestOwnerHookBinding.Instance),
             ]),
             new FakeOwnerHookInstaller(new FakeOwnerHook(detailKind)),
             new StaticResolutionProvider(new SignatureResolution(targetId, 1, 0x1234, null)));

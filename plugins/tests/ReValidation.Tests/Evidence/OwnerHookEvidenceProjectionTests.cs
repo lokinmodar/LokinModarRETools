@@ -136,6 +136,34 @@ public sealed class OwnerHookEvidenceProjectionTests
     }
 
     [Fact]
+    public void RunEvidenceEnvelope_PreservesAllowlistedCapturedContext()
+    {
+        var report = CreateReport(new JsonObject
+        {
+            ["ownerHook"] = CreateOwnerHook(
+                "journalProvider",
+                CreateStage(
+                    "ContextCaptured",
+                    "Passed",
+                    "Owner hook context captured.",
+                    new JsonObject
+                    {
+                        ["questId"] = 42,
+                        ["detailKind"] = "item",
+                        ["secret"] = "must-not-export",
+                    })),
+        });
+        var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.CaptureOnly);
+
+        var envelope = RunEvidenceEnvelope.From(report, context);
+
+        var stage = Assert.Single(envelope.OwnerHook!.Stages);
+        Assert.Equal(42, stage.Data["questId"]!.GetValue<int>());
+        Assert.Equal("item", stage.Data["detailKind"]!.GetValue<string>());
+        Assert.DoesNotContain("secret", stage.Data);
+    }
+
+    [Fact]
     public void RunEvidenceEnvelope_RejectsMalformedOwnerHookStages()
     {
         var report = CreateReport(new JsonObject
@@ -187,6 +215,32 @@ public sealed class OwnerHookEvidenceProjectionTests
         var markdown = await File.ReadAllTextAsync(output.OutputPath);
 
         Assert.Contains("| `HitObserved` | `Passed` | Owner hook observed \\| runtime hits. |", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MarkdownWriter_RendersSanitizedOwnerHookStageData()
+    {
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var report = CreateReport(new JsonObject
+        {
+            ["ownerHook"] = CreateOwnerHook(
+                "journalProvider",
+                CreateStage(
+                    "ContextCaptured",
+                    "Passed",
+                    "Owner hook context captured.",
+                    new JsonObject { ["questId"] = 42 })),
+        });
+        var context = ScenarioExecutionContext.CreateForTests(
+            ValidationRoute.OwnerSignatures,
+            ValidationMode.CaptureOnly,
+            root);
+
+        var output = await new MarkdownEvidenceWriter(new EvidencePathBuilder()).WriteAsync(report, context, CancellationToken.None);
+        var markdown = await File.ReadAllTextAsync(output.OutputPath);
+
+        Assert.Contains("| Stage | Status | Summary | Data |", markdown, StringComparison.Ordinal);
+        Assert.Contains("`questId=42`", markdown, StringComparison.Ordinal);
     }
 
     private static ScenarioRunReport CreateReport(JsonObject captureData) =>

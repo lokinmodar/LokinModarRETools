@@ -32,6 +32,7 @@ public sealed record ScenarioRunReport(
     public string Summary => Exception?.Message
         ?? AssertResult?.Summary
         ?? CompareResult?.Summary
+        ?? Capture?.FailureReason
         ?? Capture?.Summary
         ?? Precondition?.BlockingReason
         ?? Status;
@@ -54,6 +55,11 @@ public sealed record ScenarioRunReport(
 
     public ScenarioRunReport WithCapture(ScenarioCapture capture) =>
         this with { Capture = capture, CurrentPhase = "compare" };
+
+    public ScenarioRunReport MarkFromCapture(ScenarioCapture capture) =>
+        capture.Passed
+            ? this
+            : this with { IsSuccess = false, FailedPhase = "capture", CurrentPhase = "export" };
 
     public ScenarioRunReport WithCompare(ScenarioCompareResult? compare) =>
         this with { CompareResult = compare, CurrentPhase = "override" };

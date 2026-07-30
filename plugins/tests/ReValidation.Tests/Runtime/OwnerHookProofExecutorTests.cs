@@ -19,7 +19,8 @@ public sealed class OwnerHookProofExecutorTests
                 "journalProvider",
                 "Open the Journal list.",
                 new PassthroughHookContextCapture(),
-                new NoOpHookMutationStrategy("Mutation proof is not configured.")),
+                new NoOpHookMutationStrategy("Mutation proof is not configured."),
+                TestOwnerHookBinding.Instance),
         ]);
         var installer = new FakeOwnerHookInstaller(
             new FakeOwnerHook(observedHitCount: 1, [new JsonObject { ["questId"] = 1337 }]));
@@ -91,6 +92,16 @@ public sealed class OwnerHookProofExecutorTests
         Assert.Empty(contextStage.Data);
     }
 
+    [Fact]
+    public void JournalContextCapture_NormalizesNativeUShortQuestId()
+    {
+        var capture = new JournalProviderHookContextCapture();
+
+        var context = capture.Capture(new JsonObject { ["questId"] = (ushort)42 });
+
+        Assert.Equal(42U, context["questId"]!.GetValue<uint>());
+    }
+
     private static OwnerHookTargetRegistry CreateRegistry(IHookContextCapture contextCapture) =>
         new(
         [
@@ -99,7 +110,8 @@ public sealed class OwnerHookProofExecutorTests
                 "journalProvider",
                 "Open the Journal list.",
                 contextCapture,
-                new NoOpHookMutationStrategy("Mutation proof is not configured.")),
+                new NoOpHookMutationStrategy("Mutation proof is not configured."),
+                TestOwnerHookBinding.Instance),
         ]);
 
     private sealed class PassthroughHookContextCapture : IHookContextCapture

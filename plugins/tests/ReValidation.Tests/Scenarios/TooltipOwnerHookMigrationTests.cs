@@ -40,11 +40,12 @@ public sealed class TooltipOwnerHookMigrationTests
     public async Task TooltipItemOwnerScenario_WithoutObservedHook_DoesNotApplyMutationOrPassFullProof()
     {
         var probe = new FakeTooltipProbe("item", "Potion");
+        var hook = new FakeOwnerHook(0, []);
         var scenario = new TooltipItemDetailOwnerScenario(
             probe,
             new OwnerHookProofExecutor(
                 OwnerHookTargetRegistryFactory.WithTooltipTargets(probe),
-                new FakeOwnerHookInstaller(new FakeOwnerHook(0, [])),
+                new FakeOwnerHookInstaller(hook),
                 new StaticResolutionProvider(new SignatureResolution("itemTooltip", 1, 0x1234, null))),
             new FakeTooltipComparisonSource("item", "Potion"));
         var context = ScenarioExecutionContext.CreateForTests(ValidationRoute.OwnerSignatures, ValidationMode.FullProof);
@@ -56,8 +57,10 @@ public sealed class TooltipOwnerHookMigrationTests
             .RunAsync(scenario, context, CancellationToken.None);
 
         Assert.False(report.IsSuccess);
+        Assert.Equal("capture", report.FailedPhase);
         Assert.Equal(0, probe.ApplyCount);
-        Assert.False(report.AssertResult!.Passed);
+        Assert.Null(report.AssertResult);
+        Assert.True(hook.IsDisposed);
     }
 
     private static class OwnerHookTargetRegistryFactory
@@ -70,7 +73,8 @@ public sealed class TooltipOwnerHookMigrationTests
                     "itemTooltip",
                     "Open an item tooltip.",
                     new TooltipHookContextCapture("item"),
-                    new TooltipOwnerMutationStrategy(probe)),
+                    new TooltipOwnerMutationStrategy(probe),
+                    TestOwnerHookBinding.Instance),
             ]);
     }
 
@@ -115,12 +119,13 @@ public sealed class TooltipOwnerHookMigrationTests
     private sealed class FakeOwnerHook(int observedHitCount, IReadOnlyList<JsonObject> contexts) : IOwnerHook
     {
         public int ObservedHitCount { get; } = observedHitCount;
+        public bool IsDisposed { get; private set; }
 
         public IReadOnlyList<JsonObject> DrainObservedContexts() => contexts;
 
         public void Enable() { }
 
-        public void Dispose() { }
+        public void Dispose() => IsDisposed = true;
     }
 
     private sealed class StaticResolutionProvider(SignatureResolution resolution) : ISignatureResolutionProvider

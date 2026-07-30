@@ -6,7 +6,11 @@ public sealed record ScenarioPreconditionResult(bool CanRun, string? BlockingRea
 
 public sealed record ScenarioArmState(bool IsReady, string StatusText);
 
-public sealed record ScenarioCapture(string Summary, JsonObject Data);
+public sealed record ScenarioCapture(
+    string Summary,
+    JsonObject Data,
+    bool Passed = true,
+    string? FailureReason = null);
 
 public sealed record ScenarioCompareResult(bool IsMatch, string Summary, IReadOnlyList<string> Differences);
 

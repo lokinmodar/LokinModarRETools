@@ -27,9 +27,9 @@ public sealed class MarkdownEvidenceWriter(EvidencePathBuilder paths) : IEvidenc
 
         - Target: `{{evidence.OwnerHook.TargetId}}`
 
-        | Stage | Status | Summary |
-        | --- | --- | --- |
-        {{string.Join(Environment.NewLine, evidence.OwnerHook.Stages.Select(stage => $"| `{stage.Stage}` | `{stage.Status}` | {EscapeTableCell(stage.Summary)} |"))}}
+        | Stage | Status | Summary | Data |
+        | --- | --- | --- | --- |
+        {{string.Join(Environment.NewLine, evidence.OwnerHook.Stages.Select(stage => $"| `{stage.Stage}` | `{stage.Status}` | {EscapeTableCell(stage.Summary)} | {FormatStageData(stage.Data)} |"))}}
         """;
         var summaryLine = string.IsNullOrWhiteSpace(evidence.Summary)
             ? string.Empty
@@ -82,4 +82,9 @@ public sealed class MarkdownEvidenceWriter(EvidencePathBuilder paths) : IEvidenc
             .Replace("|", "\\|", StringComparison.Ordinal)
             .Replace("\r", " ", StringComparison.Ordinal)
             .Replace("\n", " ", StringComparison.Ordinal);
+
+    private static string FormatStageData(System.Text.Json.Nodes.JsonObject data) =>
+        data.Count == 0
+            ? "-"
+            : $"`{EscapeTableCell(string.Join("; ", data.Select(pair => $"{pair.Key}={pair.Value}")))}`";
 }

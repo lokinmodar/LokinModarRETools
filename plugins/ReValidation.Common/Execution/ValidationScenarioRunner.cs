@@ -70,8 +70,11 @@ public sealed class ValidationScenarioRunner : IValidationScenarioRunner
             }
 
             capture = await scenario.CaptureAsync(context, cancellationToken);
-            report = report.WithCapture(capture);
+            report = report.WithCapture(capture).MarkFromCapture(capture);
             diagnosticsSink.Debug($"capture.summary scenario={scenario.Definition.Id} summary=\"{Escape(capture.Summary)}\"");
+
+            if (report.FailedPhase is "capture")
+                return await ExportAsyncAndLogAsync(report, context);
 
             if (context.Mode is ValidationMode.CaptureOnly)
                 return await ExportAsyncAndLogAsync(report.MarkSuccess(), context);

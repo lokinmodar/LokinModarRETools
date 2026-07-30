@@ -57,6 +57,21 @@ public sealed record OwnerHookScenarioEvidence(
                  && observedHitCount.TryGetValue<int>(out var count)
                  && count >= 0)
             filtered["observedHitCount"] = count;
+        else if (stage is OwnerHookProofStage.ContextCaptured)
+        {
+            if (data["questId"] is JsonValue questId)
+            {
+                if (questId.TryGetValue<uint>(out var unsignedQuestId) && unsignedQuestId > 0)
+                    filtered["questId"] = unsignedQuestId;
+                else if (questId.TryGetValue<int>(out var signedQuestId) && signedQuestId > 0)
+                    filtered["questId"] = signedQuestId;
+            }
+
+            if (data["detailKind"] is JsonValue detailKind
+                && detailKind.TryGetValue<string>(out var kind)
+                && kind is "item" or "action")
+                filtered["detailKind"] = kind;
+        }
 
         return filtered;
     }

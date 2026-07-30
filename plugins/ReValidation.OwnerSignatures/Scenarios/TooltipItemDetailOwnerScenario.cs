@@ -67,6 +67,10 @@ public abstract class OwnerTooltipValidationScenarioBase : IValidationScenario, 
         if (proofExecutor is null)
             return ValueTask.FromResult(new ScenarioPreconditionResult(false, "Owner tooltip hook proof executor is required."));
 
+        var targetPrecondition = proofExecutor.ValidateTarget(targetId);
+        if (!targetPrecondition.CanRun)
+            return ValueTask.FromResult(targetPrecondition);
+
         if (context.Mode is ValidationMode.Compare or ValidationMode.FullProof && comparisonSource is null)
             return ValueTask.FromResult(new ScenarioPreconditionResult(false, "Tooltip comparison reference source is required."));
 
@@ -122,9 +126,11 @@ public abstract class OwnerTooltipValidationScenarioBase : IValidationScenario, 
                     ["detailKind"] = detailKind,
                     ["resolvedId"] = snapshot.ResolvedId,
                     ["ownerHook"] = activeSession.BuildEvidence().ToJson(),
-                });
+                },
+                hookEvidenceObserved,
+                hookEvidenceObserved ? null : "Tooltip hook context was not observed.");
 
-            if (context.Mode is ValidationMode.CaptureOnly or ValidationMode.Compare)
+            if (!hookEvidenceObserved || context.Mode is ValidationMode.CaptureOnly or ValidationMode.Compare)
             {
                 DisposeSession(activeSession);
                 session = null;

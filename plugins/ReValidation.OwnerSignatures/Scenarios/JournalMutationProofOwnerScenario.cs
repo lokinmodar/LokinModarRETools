@@ -21,8 +21,11 @@ public sealed class JournalMutationProofOwnerScenario(
 
     public bool RequiresArming => true;
 
-    public ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(new ScenarioPreconditionResult(true, null));
+    public ValueTask<ScenarioPreconditionResult> ValidateAsync(ScenarioExecutionContext context, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(executor.ValidateTarget(targetId));
+    }
 
     public async ValueTask<ScenarioCapture> CaptureAsync(ScenarioExecutionContext context, CancellationToken cancellationToken)
     {
@@ -30,16 +33,24 @@ public sealed class JournalMutationProofOwnerScenario(
         try
         {
             await executor.CaptureArmedAsync(activeSession, cancellationToken);
-            if (context.Mode is ValidationMode.CaptureOnly or ValidationMode.Compare)
+            var requiredProofObserved = HasPassedStage(activeSession, OwnerHookProofStage.SignatureResolved)
+                && HasPassedStage(activeSession, OwnerHookProofStage.HookInstalled)
+                && HasPassedStage(activeSession, OwnerHookProofStage.HitObserved)
+                && HasPassedStage(activeSession, OwnerHookProofStage.ContextCaptured);
+            if (!requiredProofObserved || context.Mode is ValidationMode.CaptureOnly or ValidationMode.Compare)
             {
                 RecordDisarm(activeSession);
                 session = null;
             }
 
-            var capture = new ScenarioCapture("Journal mutation proof armed", new JsonObject
-            {
-                ["ownerHook"] = activeSession.BuildEvidence().ToJson(),
-            });
+            var capture = new ScenarioCapture(
+                "Journal mutation proof armed",
+                new JsonObject
+                {
+                    ["ownerHook"] = activeSession.BuildEvidence().ToJson(),
+                },
+                requiredProofObserved,
+                requiredProofObserved ? null : "Journal hook context was not observed.");
             return capture;
         }
         catch
@@ -131,4 +142,7 @@ public sealed class JournalMutationProofOwnerScenario(
             new JsonObject()));
         activeSession.Dispose();
     }
+
+    private static bool HasPassedStage(OwnerHookSession session, OwnerHookProofStage stage) =>
+        session.StageRecords.Any(record => record.Stage == stage && record.Status is OwnerHookProofStatus.Passed);
 }

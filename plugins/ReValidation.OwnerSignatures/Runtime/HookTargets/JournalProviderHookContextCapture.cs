@@ -11,8 +11,12 @@ public sealed class JournalProviderHookContextCapture : IHookContextCapture
         if (rawContext["questId"] is not JsonValue questId)
             return captured;
 
-        if (questId.TryGetValue<uint>(out var value) && value > 0)
-            captured["questId"] = value;
+        if (questId.TryGetValue<uint>(out var unsignedValue) && unsignedValue > 0)
+            captured["questId"] = unsignedValue;
+        else if (questId.TryGetValue<ushort>(out var nativeValue) && nativeValue > 0)
+            captured["questId"] = (uint)nativeValue;
+        else if (questId.TryGetValue<int>(out var signedValue) && signedValue > 0)
+            captured["questId"] = (uint)signedValue;
 
         return captured;
     }

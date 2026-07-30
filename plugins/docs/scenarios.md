@@ -58,6 +58,10 @@ for hover-driven captures, then perform the hover within the configured arm wind
 remains a direct `Run selected scenario` flow because the Journal window is already persistent and does
 not depend on a transient hover cue.
 
+Owner-route tooltip branch validation is intentionally blocked until the branch workflow has its own
+interactive arm/cue state machine. Use the individual armed tooltip scenarios for runtime proof; the
+branch action must not be treated as a successful zero-hit capture.
+
 ## Operator Workflow
 
 1. Open the route window with `/revalidate-local` or `/revalidate-owner`.
